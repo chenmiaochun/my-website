@@ -13,13 +13,20 @@ const files = {
 assert.match(files.html, /上传平面图/);
 assert.match(files.html, /id="planInput"/);
 assert.match(files.html, /id="renderForm"/);
-assert.match(files.html, /fetch\("\/api\/render"/);
+assert.match(files.html, /apiOrigin/);
+assert.match(files.html, /apiPath\("\/api\/render"\)/);
+assert.match(files.html, /\/api\/health/);
+assert.match(files.html, /本地生成服务已连接/);
+assert.equal(/id="planInput"[^>]+required/.test(files.html), false, "file input should use visible JS validation");
 assert.match(files.css, /\.studio-panel/);
 assert.match(files.css, /@media \(max-width: 680px\)/);
 assert.match(files.server, /IMAGE_API_KEY/);
 assert.match(files.server, /\/images\/edits/);
+assert.match(files.server, /Access-Control-Allow-Origin/);
+assert.match(files.server, /MOCK_RENDER/);
 assert.match(files.server, /IMAGE_REQUEST_TIMEOUT_MS \|\| 180000/);
 assert.match(files.readme, /GET \/api\/health/);
+assert.match(files.readme, /MOCK_RENDER/);
 
 for (const [name, content] of Object.entries(files)) {
   const keyMatches = content.match(/sk-jp-[A-Za-z0-9]{24,}/g) || [];
@@ -122,15 +129,57 @@ async function verifyMockedSuccessPath() {
   }
 }
 
+async function verifyDemoMode() {
+  const renderPort = String(7200 + Math.floor(Math.random() * 1000));
+  const renderServer = spawn(process.execPath, ["server.js"], {
+    env: {
+      ...process.env,
+      PORT: renderPort,
+      SKIP_DOTENV: "1",
+      IMAGE_API_KEY: "fake-test-key",
+      MOCK_RENDER: "1",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const renderBaseUrl = `http://localhost:${renderPort}`;
+
+  try {
+    const health = await waitForServer(renderBaseUrl);
+    assert.equal(health.mock, true);
+    const response = await fetch(`${renderBaseUrl}/api/render`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        image: "data:image/png;base64,iVBORw0KGgo=",
+        fileName: "plan.png",
+      }),
+    });
+    assert.equal(response.status, 200);
+    const data = await response.json();
+    assert.match(data.note, /演示模式/);
+    assert.ok(data.b64.length > 20);
+  } finally {
+    renderServer.kill();
+  }
+}
+
 (async () => {
   try {
     const health = await waitForServer();
     assert.equal(health.ok, true);
     assert.equal(health.upstream, "https://xiaoji.baziapi.site/v1");
+    assert.equal(health.mock, false);
 
     const home = await fetch(`${baseUrl}/`);
     assert.equal(home.status, 200);
     assert.match(await home.text(), /AI 装修效果图/);
+
+    const options = await fetch(`${baseUrl}/api/render`, {
+      method: "OPTIONS",
+      headers: { "Access-Control-Request-Method": "POST" },
+    });
+    assert.equal(options.status, 204);
+    assert.equal(options.headers.get("access-control-allow-origin"), "*");
 
     const render = await fetch(`${baseUrl}/api/render`, {
       method: "POST",
@@ -145,6 +194,7 @@ async function verifyMockedSuccessPath() {
     assert.match(error.error.message, /IMAGE_API_KEY/);
 
     await verifyMockedSuccessPath();
+    await verifyDemoMode();
 
     console.log("Verification passed");
   } finally {

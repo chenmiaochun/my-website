@@ -11,6 +11,7 @@ const apiBaseUrl = process.env.IMAGE_API_BASE_URL || "https://xiaoji.baziapi.sit
 const imageModel = process.env.IMAGE_MODEL || "gpt-image-1";
 const requestTimeoutMs = Number(process.env.IMAGE_REQUEST_TIMEOUT_MS || 180000);
 const maxBodyBytes = Number(process.env.MAX_UPLOAD_BYTES || 12 * 1024 * 1024);
+const mockRender = process.env.MOCK_RENDER === "1";
 
 function loadDotEnv() {
   const envPath = path.join(rootDir, ".env");
@@ -41,8 +42,13 @@ const mimeTypes = {
 
 const server = http.createServer(async (request, response) => {
   try {
+    if (request.method === "OPTIONS") {
+      sendCors(response, 204);
+      return;
+    }
+
     if (request.method === "GET" && request.url === "/api/health") {
-      sendJson(response, 200, { ok: true, model: imageModel, upstream: apiBaseUrl });
+      sendJson(response, 200, { ok: true, model: imageModel, upstream: apiBaseUrl, mock: mockRender });
       return;
     }
 
@@ -80,6 +86,16 @@ async function handleRender(request, response) {
 
   const imageFile = dataUrlToBlob(payload.image, payload.fileName || "floor-plan.png");
   const prompt = buildRenovationPrompt(payload);
+
+  if (mockRender) {
+    sendJson(response, 200, {
+      b64: mockPreviewImage(),
+      prompt,
+      note: "已使用本地演示模式生成预览。配置真实模型后会返回 AI 装修效果图。",
+    });
+    return;
+  }
+
   const formData = new FormData();
   formData.append("model", imageModel);
   formData.append("prompt", prompt);
@@ -164,6 +180,10 @@ function buildRenovationPrompt(payload) {
   ].join(" ");
 }
 
+function mockPreviewImage() {
+  return "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAp0lEQVR4nO3ZsQ2AMAwFQfv/p7sJkJQKjIixdCrwSKnznCQ9fN91n+8AoJ8YQABBAAEEEEAAAQQQQAABBBBAAAEEEEAAAQQQQAABBBBAwHcBQ0NDn+8k5ZyZz16UZXg1eM2x9ys0bP5hFwEEEEAAAQQQQAABBBBAAAEEEEAAAQQQQAABBBBAAAEEEEAAAc4FAAA5fZkxL1aBAAAAAElFTkSuQmCC";
+}
+
 async function readRequestBody(request) {
   const chunks = [];
   let size = 0;
@@ -191,10 +211,11 @@ async function serveStatic(request, response) {
     response.writeHead(200, {
       "Content-Type": mimeTypes[path.extname(filePath)] || "application/octet-stream",
       "Cache-Control": "no-store",
+      ...corsHeaders(),
     });
     response.end(file);
   } catch {
-    response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8", ...corsHeaders() });
     response.end("Not found");
   }
 }
@@ -203,6 +224,20 @@ function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
+    ...corsHeaders(),
   });
   response.end(JSON.stringify(payload));
+}
+
+function sendCors(response, statusCode) {
+  response.writeHead(statusCode, corsHeaders());
+  response.end();
+}
+
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type,Authorization",
+  };
 }

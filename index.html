@@ -37,7 +37,7 @@
       <section class="studio-panel" aria-label="上传平面图生成装修效果">
         <form class="render-form" id="renderForm">
           <div class="upload-zone" id="uploadZone">
-            <input id="planInput" name="plan" type="file" accept="image/*" required />
+            <input id="planInput" name="plan" type="file" accept="image/*" />
             <div class="upload-empty" id="uploadEmpty">
               <strong>上传平面图</strong>
               <span>支持 JPG、PNG、WebP，建议图片清晰标注门窗与承重墙。</span>
@@ -178,6 +178,7 @@
       const resultImage = document.querySelector("#resultImage");
       const resultEmpty = document.querySelector("#resultEmpty");
       const downloadLink = document.querySelector("#downloadLink");
+      const apiOrigin = window.location.protocol === "file:" ? "http://localhost:5177" : "";
 
       const fileToDataUrl = (file) =>
         new Promise((resolve, reject) => {
@@ -187,10 +188,28 @@
           reader.readAsDataURL(file);
         });
 
+      const apiPath = (path) => `${apiOrigin}${path}`;
+
       const setStatus = (text, tone = "idle") => {
         statusBadge.textContent = text;
         statusBadge.dataset.tone = tone;
       };
+
+      if (window.location.protocol === "file:") {
+        formNote.textContent = "当前是直接打开 HTML，将自动连接 http://localhost:5177 本地服务。";
+        fetch(apiPath("/api/health"))
+          .then((response) => {
+            if (!response.ok) throw new Error("health check failed");
+            return response.json();
+          })
+          .then(() => {
+            formNote.textContent = "本地生成服务已连接，可以上传平面图生成效果图。";
+          })
+          .catch(() => {
+            formNote.textContent = "当前是直接打开 HTML，但没有连接到本地服务。请先启动 server.js。";
+            setStatus("服务未连接", "error");
+          });
+      }
 
       planInput.addEventListener("change", async () => {
         const file = planInput.files?.[0];
@@ -206,6 +225,7 @@
         const file = planInput.files?.[0];
         if (!file) {
           formNote.textContent = "请先上传一张平面图。";
+          setStatus("待上传", "error");
           return;
         }
 
@@ -227,7 +247,7 @@
             priorities,
           };
 
-          const response = await fetch("/api/render", {
+          const response = await fetch(apiPath("/api/render"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
@@ -244,7 +264,10 @@
           formNote.textContent = data.note || "生成完成，可以下载或继续调整参数。";
           setStatus("已完成", "done");
         } catch (error) {
-          formNote.textContent = error.message;
+          const isNetworkError = error instanceof TypeError;
+          formNote.textContent = isNetworkError
+            ? "没有连接到本地生成服务。请确认 server.js 正在运行，然后刷新页面再试。"
+            : error.message;
           setStatus("失败", "error");
         } finally {
           submitButton.disabled = false;
