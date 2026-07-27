@@ -28,7 +28,7 @@ for (const [name, content] of Object.entries(files)) {
 
 const port = String(5200 + Math.floor(Math.random() * 1000));
 const child = spawn(process.execPath, ["server.js"], {
-  env: { ...process.env, PORT: port },
+  env: { ...process.env, PORT: port, SKIP_DOTENV: "1", IMAGE_API_KEY: "" },
   stdio: ["ignore", "pipe", "pipe"],
 });
 
@@ -84,6 +84,7 @@ async function verifyMockedSuccessPath() {
     env: {
       ...process.env,
       PORT: renderPort,
+      SKIP_DOTENV: "1",
       IMAGE_API_KEY: "fake-test-key",
       IMAGE_API_BASE_URL: mock.url,
       IMAGE_MODEL: "test-image-model",

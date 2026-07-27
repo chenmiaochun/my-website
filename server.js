@@ -4,7 +4,7 @@ const { existsSync, readFileSync } = require("node:fs");
 const path = require("node:path");
 
 const rootDir = __dirname;
-loadDotEnv();
+if (process.env.SKIP_DOTENV !== "1") loadDotEnv();
 
 const port = Number(process.env.PORT || 4173);
 const apiBaseUrl = process.env.IMAGE_API_BASE_URL || "https://xiaoji.baziapi.site/v1";
