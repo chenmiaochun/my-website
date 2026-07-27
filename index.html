@@ -3,269 +3,254 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>尚品居 | 家具与全屋生活</title>
+    <title>尚品居 AI 装修效果图</title>
     <link rel="preconnect" href="https://images.unsplash.com" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <header class="site-header">
-      <a class="brand" href="#" aria-label="尚品居首页">尚品居</a>
+      <a class="brand" href="#studio" aria-label="尚品居首页">尚品居</a>
       <nav class="main-nav" aria-label="主导航">
-        <a href="#products">家具</a>
-        <a href="#products">家居</a>
-        <a class="active" href="#products">商城</a>
-        <a href="#services">案例</a>
-        <a href="#showroom">品牌</a>
+        <a class="active" href="#studio">AI 设计</a>
+        <a href="#workflow">流程</a>
+        <a href="#library">方案库</a>
+        <a href="#services">服务</a>
       </nav>
-      <div class="header-actions" aria-label="用户操作">
-        <button type="button" aria-label="搜索">搜索</button>
-        <button type="button" aria-label="会员">会员</button>
-        <button type="button" aria-label="购物袋">购物袋</button>
+      <div class="header-actions">
+        <a href="#studio">上传平面图</a>
       </div>
     </header>
 
     <main>
-      <section class="hero shop-hero" aria-label="尚品居商城首页">
+      <section class="hero" id="studio" aria-label="AI 装修效果图生成器">
         <img
-          src="https://images.unsplash.com/photo-1600210492493-0946911123ea?auto=format&fit=crop&w=1800&q=82"
-          alt="尚品居家具生活方式陈列"
+          src="https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1800&q=82"
+          alt="现代客厅装修效果"
         />
         <div class="hero-copy">
-          <p>SHOP</p>
-          <h1>尚品居商城</h1>
+          <p>AI RENOVATION STUDIO</p>
+          <h1>上传平面图，生成你的装修效果图</h1>
+          <span>从户型结构、生活方式和预算出发，快速预览不同装修风格的空间方案。</span>
         </div>
       </section>
 
-      <section class="category-bar" aria-label="商品分类">
-        <a class="active" href="#products">全部</a>
-        <a href="#products">沙发</a>
-        <a href="#products">桌几</a>
-        <a href="#products">柜架</a>
-        <a href="#products">床具</a>
-        <a href="#products">餐厨</a>
-        <a href="#products">软装</a>
-        <a href="#products">定制</a>
+      <section class="studio-panel" aria-label="上传平面图生成装修效果">
+        <form class="render-form" id="renderForm">
+          <div class="upload-zone" id="uploadZone">
+            <input id="planInput" name="plan" type="file" accept="image/*" required />
+            <div class="upload-empty" id="uploadEmpty">
+              <strong>上传平面图</strong>
+              <span>支持 JPG、PNG、WebP，建议图片清晰标注门窗与承重墙。</span>
+            </div>
+            <img id="planPreview" alt="已上传的平面图预览" hidden />
+          </div>
+
+          <div class="control-grid">
+            <label>
+              空间类型
+              <select name="roomType">
+                <option value="whole home">整屋</option>
+                <option value="living room">客厅</option>
+                <option value="bedroom">卧室</option>
+                <option value="kitchen">厨房</option>
+                <option value="bathroom">卫浴</option>
+              </select>
+            </label>
+            <label>
+              装修风格
+              <select name="style">
+                <option value="modern warm minimalism">现代暖调极简</option>
+                <option value="japanese wabi-sabi">日式侘寂</option>
+                <option value="french cream">法式奶油</option>
+                <option value="new chinese">新中式</option>
+                <option value="industrial loft">工业 Loft</option>
+              </select>
+            </label>
+            <label>
+              预算档位
+              <select name="budget">
+                <option value="practical">实用经济</option>
+                <option value="balanced">品质平衡</option>
+                <option value="premium">高端质感</option>
+              </select>
+            </label>
+            <label>
+              家庭需求
+              <input name="needs" type="text" placeholder="例如：三口之家、收纳多、宠物友好" />
+            </label>
+          </div>
+
+          <fieldset class="option-set">
+            <legend>重点优化</legend>
+            <label><input type="checkbox" name="priorities" value="storage" checked /> 收纳</label>
+            <label><input type="checkbox" name="priorities" value="lighting" checked /> 采光</label>
+            <label><input type="checkbox" name="priorities" value="traffic flow" /> 动线</label>
+            <label><input type="checkbox" name="priorities" value="child friendly" /> 儿童友好</label>
+          </fieldset>
+
+          <button class="primary-button" type="submit" id="submitButton">生成装修效果图</button>
+          <p class="form-note" id="formNote">密钥只在本地服务端读取，不会暴露到浏览器。</p>
+        </form>
+
+        <aside class="result-panel" aria-live="polite">
+          <div class="result-toolbar">
+            <div>
+              <p>RESULT</p>
+              <h2>效果图预览</h2>
+            </div>
+            <span id="statusBadge">待上传</span>
+          </div>
+          <div class="result-canvas" id="resultCanvas">
+            <img id="resultImage" alt="AI 生成的装修效果图" hidden />
+            <div id="resultEmpty">
+              <strong>你的空间预览会显示在这里</strong>
+              <span>生成通常需要几十秒到两分钟，请保持页面打开。</span>
+            </div>
+          </div>
+          <a class="download-link" id="downloadLink" href="#" download="renovation-render.png" hidden>下载效果图</a>
+        </aside>
       </section>
 
-      <section class="intro">
-        <p>从一张沙发、一套餐桌，到整屋柜体和软装搭配，尚品居把常用家具做成清楚、耐看、方便挑选的陈列。</p>
-      </section>
-
-      <section class="shop-toolbar" aria-label="商城筛选工具">
-        <div>
-          <button class="active" type="button">综合</button>
-          <button type="button">新品</button>
-          <button type="button">热销</button>
-          <button type="button">价格</button>
-        </div>
-        <button type="button">筛选</button>
-      </section>
-
-      <section class="product-grid" id="products" aria-label="尚品居商品列表">
-        <article class="product feature">
-          <a href="#mini-program">
-            <figure>
-              <img src="https://images.unsplash.com/photo-1615874694520-474822394e73?auto=format&fit=crop&w=1200&q=80" alt="现代客厅沙发组合" />
-            </figure>
-            <div>
-              <h2>云感模块沙发</h2>
-              <p>￥3,980 起</p>
-            </div>
-            <span>热销</span>
-          </a>
-        </article>
-        <article class="product">
-          <a href="#mini-program">
-            <figure>
-              <img src="https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=900&q=80" alt="实木餐桌与餐椅" />
-            </figure>
-            <div>
-              <h2>岩板餐桌</h2>
-              <p>￥2,680</p>
-            </div>
-          </a>
-        </article>
-        <article class="product">
-          <a href="#mini-program">
-            <figure>
-              <img src="https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=900&q=80" alt="简洁卧室床和床头柜" />
-            </figure>
-            <div>
-              <h2>舒眠软包床</h2>
-              <p>￥3,280</p>
-            </div>
-          </a>
-        </article>
-        <article class="product">
-          <a href="#mini-program">
-            <figure>
-              <img src="https://images.unsplash.com/photo-1604578762246-41134e37f9cc?auto=format&fit=crop&w=900&q=80" alt="客厅电视柜局部" />
-            </figure>
-            <div>
-              <h2>悬浮电视柜</h2>
-              <p>￥1,860</p>
-            </div>
-          </a>
-        </article>
-        <article class="product">
-          <a href="#mini-program">
-            <figure>
-              <img src="https://images.unsplash.com/photo-1595526114035-0d45ed16cfbf?auto=format&fit=crop&w=900&q=80" alt="卧室衣柜与收纳空间" />
-            </figure>
-            <div>
-              <h2>卧室衣柜定制</h2>
-              <p>预约量尺</p>
-            </div>
-          </a>
-        </article>
-        <article class="product wide">
-          <a href="#mini-program">
-            <figure>
-              <img src="https://images.unsplash.com/photo-1615529162924-f8605388461d?auto=format&fit=crop&w=1300&q=80" alt="餐边柜与家居陈列" />
-            </figure>
-            <div>
-              <h2>餐边柜收纳系统</h2>
-              <p>￥2,980 起</p>
-            </div>
-          </a>
-        </article>
-        <article class="product">
-          <a href="#mini-program">
-            <figure>
-              <img src="https://images.unsplash.com/photo-1616627781431-23b776aad6d3?auto=format&fit=crop&w=900&q=80" alt="休闲椅和边几" />
-            </figure>
-            <div>
-              <h2>弧背休闲椅</h2>
-              <p>￥960</p>
-            </div>
-          </a>
-        </article>
-        <article class="product">
-          <a href="#mini-program">
-            <figure>
-              <img src="https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=900&q=80" alt="客厅茶几和沙发" />
-            </figure>
-            <div>
-              <h2>圆角茶几</h2>
-              <p>￥780</p>
-            </div>
-          </a>
-        </article>
-        <article class="product">
-          <a href="#mini-program">
-            <figure>
-              <img src="https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?auto=format&fit=crop&w=900&q=80" alt="现代客厅家具组合" />
-            </figure>
-            <div>
-              <h2>三人位布艺沙发</h2>
-              <p>￥2,860</p>
-            </div>
-          </a>
-        </article>
-        <article class="product">
-          <a href="#mini-program">
-            <figure>
-              <img src="https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=900&q=80" alt="卧室床头柜" />
-            </figure>
-            <div>
-              <h2>双抽床头柜</h2>
-              <p>￥520</p>
-            </div>
-          </a>
-        </article>
-        <article class="product">
-          <a href="#mini-program">
-            <figure>
-              <img src="https://images.unsplash.com/photo-1567016376408-0226e4d0c1ea?auto=format&fit=crop&w=900&q=80" alt="餐椅局部" />
-            </figure>
-            <div>
-              <h2>藤面餐椅</h2>
-              <p>￥398</p>
-            </div>
-          </a>
-        </article>
-        <article class="product">
-          <a href="#mini-program">
-            <figure>
-              <img src="https://images.unsplash.com/photo-1617103996702-96ff29b1c467?auto=format&fit=crop&w=900&q=80" alt="家居置物架" />
-            </figure>
-            <div>
-              <h2>开放置物架</h2>
-              <p>￥1,180</p>
-            </div>
-          </a>
-        </article>
-      </section>
-
-      <section class="service-band" id="services" aria-label="尚品居服务">
+      <section class="workflow" id="workflow">
         <div class="section-title">
-          <p>SERVICE</p>
-          <h2>从看款到落地，一起把家配齐</h2>
+          <p>WORKFLOW</p>
+          <h2>把平面图变成可讨论、可调整、可落地的装修方案</h2>
         </div>
-        <div class="service-list">
+        <div class="step-list">
           <article>
             <span>01</span>
-            <h3>门店选款</h3>
-            <p>现场看材质、坐感、尺寸比例，适合正在装修或准备换家具的家庭。</p>
+            <h3>识别户型</h3>
+            <p>保留门窗、墙体和空间比例，避免把平面图改成不现实的结构。</p>
           </article>
           <article>
             <span>02</span>
-            <h3>量尺搭配</h3>
-            <p>根据户型尺寸和使用习惯，搭配沙发、餐桌、床柜与收纳系统。</p>
+            <h3>套入风格</h3>
+            <p>按风格、预算和生活需求生成空间视觉方向，便于快速比较。</p>
           </article>
           <article>
             <span>03</span>
-            <h3>配送安装</h3>
-            <p>大件家具到家安装，减少自己搬运和反复沟通的麻烦。</p>
+            <h3>输出清单</h3>
+            <p>围绕家具、灯光、收纳和软装形成后续采购与设计沟通依据。</p>
           </article>
         </div>
       </section>
 
-      <section class="showroom" id="showroom" aria-label="尚品居展厅">
-        <img
-          src="https://images.unsplash.com/photo-1616486029423-aaa4789e8c9a?auto=format&fit=crop&w=1400&q=82"
-          alt="家具展厅里的客厅样板间"
-        />
-        <div>
-          <p>SHOWROOM</p>
-          <h2>看得见的材质，坐得出的舒服</h2>
-          <span>客厅、餐厅、卧室、柜类与软装配套集中陈列，适合整屋选购。</span>
-        </div>
+      <section class="library" id="library">
+        <article>
+          <img src="https://images.unsplash.com/photo-1600566753376-12c8ab7fb75b?auto=format&fit=crop&w=900&q=80" alt="暖调现代客厅" />
+          <h3>暖调现代</h3>
+          <p>浅木、米白和低饱和布艺，适合采光充足的小户型。</p>
+        </article>
+        <article>
+          <img src="https://images.unsplash.com/photo-1600210491369-e753d80a41f3?auto=format&fit=crop&w=900&q=80" alt="开放厨房和餐厅" />
+          <h3>开放餐厨</h3>
+          <p>用中岛、餐边柜和灯光层次提升家庭互动效率。</p>
+        </article>
+        <article>
+          <img src="https://images.unsplash.com/photo-1616594039964-ae9021a400a0?auto=format&fit=crop&w=900&q=80" alt="安静卧室空间" />
+          <h3>静音卧室</h3>
+          <p>强调遮光、床头收纳和低眩光照明，提升睡眠体验。</p>
+        </article>
       </section>
 
-      <section class="mini-program" id="mini-program" aria-label="尚品居小程序">
+      <section class="service-band" id="services">
         <div>
-          <p>WECHAT MINI PROGRAM</p>
-          <h2>尚品居小程序</h2>
-          <span>#小程序://尚品居/J2QzQdfnAECuXTq</span>
+          <p>SERVICE</p>
+          <h2>AI 先看方向，设计师再把方案落到尺寸、材料和预算</h2>
         </div>
-        <a class="mini-link" href="#products" aria-label="查看尚品居商品">查看商品</a>
+        <a href="#studio">开始生成</a>
       </section>
     </main>
 
     <footer>
-      <div>
-        <strong>尚品居</strong>
-        <span>家具、软装、定制，一站配齐理想的家。</span>
-      </div>
-      <nav aria-label="页脚导航">
-        <a href="#showroom">门店</a>
-        <a href="#services">服务</a>
-        <a href="#mini-program">小程序</a>
-      </nav>
+      <strong>尚品居 AI 装修</strong>
+      <span>平面图分析、效果图预览、家具软装搭配。</span>
     </footer>
+
     <script>
-      const switchActive = (selector) => {
-        document.querySelectorAll(selector).forEach((item) => {
-          item.addEventListener("click", () => {
-            document.querySelectorAll(selector).forEach((node) => node.classList.remove("active"));
-            item.classList.add("active");
-          });
+      const form = document.querySelector("#renderForm");
+      const planInput = document.querySelector("#planInput");
+      const planPreview = document.querySelector("#planPreview");
+      const uploadEmpty = document.querySelector("#uploadEmpty");
+      const statusBadge = document.querySelector("#statusBadge");
+      const submitButton = document.querySelector("#submitButton");
+      const formNote = document.querySelector("#formNote");
+      const resultImage = document.querySelector("#resultImage");
+      const resultEmpty = document.querySelector("#resultEmpty");
+      const downloadLink = document.querySelector("#downloadLink");
+
+      const fileToDataUrl = (file) =>
+        new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(new Error("图片读取失败，请重新选择文件。"));
+          reader.readAsDataURL(file);
         });
+
+      const setStatus = (text, tone = "idle") => {
+        statusBadge.textContent = text;
+        statusBadge.dataset.tone = tone;
       };
 
-      switchActive(".category-bar a");
-      switchActive(".shop-toolbar button");
+      planInput.addEventListener("change", async () => {
+        const file = planInput.files?.[0];
+        if (!file) return;
+        planPreview.src = await fileToDataUrl(file);
+        planPreview.hidden = false;
+        uploadEmpty.hidden = true;
+        setStatus("已上传", "ready");
+      });
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const file = planInput.files?.[0];
+        if (!file) {
+          formNote.textContent = "请先上传一张平面图。";
+          return;
+        }
+
+        submitButton.disabled = true;
+        submitButton.textContent = "正在生成...";
+        formNote.textContent = "正在分析平面图并生成装修效果图，请稍等。";
+        setStatus("生成中", "busy");
+
+        try {
+          const formData = new FormData(form);
+          const priorities = formData.getAll("priorities");
+          const payload = {
+            image: await fileToDataUrl(file),
+            fileName: file.name,
+            roomType: formData.get("roomType"),
+            style: formData.get("style"),
+            budget: formData.get("budget"),
+            needs: formData.get("needs"),
+            priorities,
+          };
+
+          const response = await fetch("/api/render", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error?.message || "生成失败，请稍后重试。");
+
+          const imageUrl = data.imageUrl || `data:image/png;base64,${data.b64}`;
+          resultImage.src = imageUrl;
+          resultImage.hidden = false;
+          resultEmpty.hidden = true;
+          downloadLink.href = imageUrl;
+          downloadLink.hidden = false;
+          formNote.textContent = data.note || "生成完成，可以下载或继续调整参数。";
+          setStatus("已完成", "done");
+        } catch (error) {
+          formNote.textContent = error.message;
+          setStatus("失败", "error");
+        } finally {
+          submitButton.disabled = false;
+          submitButton.textContent = "生成装修效果图";
+        }
+      });
     </script>
   </body>
 </html>
