@@ -39,11 +39,17 @@
           <div class="upload-zone" id="uploadZone">
             <input id="planInput" name="plan" type="file" accept="image/*" />
             <div class="upload-empty" id="uploadEmpty">
-              <strong>上传平面图</strong>
-              <span>支持 JPG、PNG、WebP，建议图片清晰标注门窗与承重墙。</span>
+              <strong>上传户型图或房间实拍</strong>
+              <span>平面图用于判断结构，实拍图用于快速换风格。第一步先把方向跑通。</span>
             </div>
             <img id="planPreview" alt="已上传的平面图预览" hidden />
           </div>
+
+          <fieldset class="mode-set">
+            <legend>设计入口</legend>
+            <label><input type="radio" name="sourceType" value="floor plan" checked /> 户型/平面图</label>
+            <label><input type="radio" name="sourceType" value="room photo" /> 房间实拍</label>
+          </fieldset>
 
           <div class="control-grid">
             <label>
@@ -75,8 +81,16 @@
               </select>
             </label>
             <label>
+              建筑面积
+              <input name="homeArea" type="text" placeholder="例如：89㎡、三室两厅" />
+            </label>
+            <label>
               家庭需求
               <input name="needs" type="text" placeholder="例如：三口之家、收纳多、宠物友好" />
+            </label>
+            <label>
+              保留元素
+              <input name="keepItems" type="text" placeholder="例如：承重墙、阳台、现有餐桌" />
             </label>
           </div>
 
@@ -108,6 +122,23 @@
             </div>
           </div>
           <a class="download-link" id="downloadLink" href="#" download="renovation-render.png" hidden>下载效果图</a>
+          <div class="insight-panel" id="insightPanel" hidden>
+            <section>
+              <p>DESIGN BASIS</p>
+              <h3>这张图是根据什么生成的</h3>
+              <ul id="basisList"></ul>
+            </section>
+            <section>
+              <p>SHOPPING LIST</p>
+              <h3>可转化的家具清单</h3>
+              <ul id="shoppingList"></ul>
+            </section>
+            <section>
+              <p>NEXT STEP</p>
+              <h3>下一步细化</h3>
+              <ul id="nextStepList"></ul>
+            </section>
+          </div>
         </aside>
       </section>
 
@@ -119,18 +150,18 @@
         <div class="step-list">
           <article>
             <span>01</span>
-            <h3>识别户型</h3>
-            <p>保留门窗、墙体和空间比例，避免把平面图改成不现实的结构。</p>
+            <h3>先识别依据</h3>
+            <p>参考酷家乐式链路，先把户型结构、房间范围、预算和家庭需求显性化。</p>
           </article>
           <article>
             <span>02</span>
-            <h3>套入风格</h3>
-            <p>按风格、预算和生活需求生成空间视觉方向，便于快速比较。</p>
+            <h3>再生成视觉</h3>
+            <p>参考 Homestyler 的可信流程，把平面图或实拍图转成可讨论的空间方向。</p>
           </article>
           <article>
             <span>03</span>
-            <h3>输出清单</h3>
-            <p>围绕家具、灯光、收纳和软装形成后续采购与设计沟通依据。</p>
+            <h3>最后承接商品</h3>
+            <p>参考 ReimagineHome，把效果图拆成家具、灯具、收纳和软装清单。</p>
           </article>
         </div>
       </section>
@@ -178,6 +209,10 @@
       const resultImage = document.querySelector("#resultImage");
       const resultEmpty = document.querySelector("#resultEmpty");
       const downloadLink = document.querySelector("#downloadLink");
+      const insightPanel = document.querySelector("#insightPanel");
+      const basisList = document.querySelector("#basisList");
+      const shoppingList = document.querySelector("#shoppingList");
+      const nextStepList = document.querySelector("#nextStepList");
       const apiOrigin = window.location.protocol === "file:" ? "http://localhost:5177" : "";
 
       const fileToDataUrl = (file) =>
@@ -193,6 +228,22 @@
       const setStatus = (text, tone = "idle") => {
         statusBadge.textContent = text;
         statusBadge.dataset.tone = tone;
+      };
+
+      const renderList = (node, items = []) => {
+        node.innerHTML = "";
+        items.forEach((item) => {
+          const li = document.createElement("li");
+          li.textContent = item;
+          node.appendChild(li);
+        });
+      };
+
+      const showInsights = (data) => {
+        renderList(basisList, data.designBasis || []);
+        renderList(shoppingList, data.shoppingList || []);
+        renderList(nextStepList, data.nextSteps || []);
+        insightPanel.hidden = false;
       };
 
       if (window.location.protocol === "file:") {
@@ -240,10 +291,13 @@
           const payload = {
             image: await fileToDataUrl(file),
             fileName: file.name,
+            sourceType: formData.get("sourceType"),
             roomType: formData.get("roomType"),
             style: formData.get("style"),
             budget: formData.get("budget"),
+            homeArea: formData.get("homeArea"),
             needs: formData.get("needs"),
+            keepItems: formData.get("keepItems"),
             priorities,
           };
 
@@ -261,6 +315,7 @@
           resultEmpty.hidden = true;
           downloadLink.href = imageUrl;
           downloadLink.hidden = false;
+          showInsights(data);
           formNote.textContent = data.note || "生成完成，可以下载或继续调整参数。";
           setStatus("已完成", "done");
         } catch (error) {

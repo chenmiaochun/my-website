@@ -10,21 +10,31 @@ const files = {
   readme: readFileSync("README.md", "utf8"),
 };
 
-assert.match(files.html, /上传平面图/);
 assert.match(files.html, /id="planInput"/);
-assert.match(files.html, /id="renderForm"/);
-assert.match(files.html, /apiOrigin/);
+assert.match(files.html, /name="sourceType"/);
+assert.match(files.html, /name="homeArea"/);
+assert.match(files.html, /name="keepItems"/);
+assert.match(files.html, /id="insightPanel"/);
+assert.match(files.html, /id="basisList"/);
+assert.match(files.html, /id="shoppingList"/);
+assert.match(files.html, /id="nextStepList"/);
 assert.match(files.html, /apiPath\("\/api\/render"\)/);
 assert.match(files.html, /\/api\/health/);
-assert.match(files.html, /本地生成服务已连接/);
 assert.equal(/id="planInput"[^>]+required/.test(files.html), false, "file input should use visible JS validation");
+
 assert.match(files.css, /\.studio-panel/);
+assert.match(files.css, /\.mode-set/);
+assert.match(files.css, /\.insight-panel/);
 assert.match(files.css, /@media \(max-width: 680px\)/);
+
 assert.match(files.server, /IMAGE_API_KEY/);
 assert.match(files.server, /\/images\/edits/);
 assert.match(files.server, /Access-Control-Allow-Origin/);
 assert.match(files.server, /MOCK_RENDER/);
+assert.match(files.server, /buildDesignMeta/);
+assert.match(files.server, /shoppingListFor/);
 assert.match(files.server, /IMAGE_REQUEST_TIMEOUT_MS \|\| 180000/);
+
 assert.match(files.readme, /GET \/api\/health/);
 assert.match(files.readme, /MOCK_RENDER/);
 
@@ -84,6 +94,26 @@ function createMockUpstream() {
   });
 }
 
+async function postRender(url, overrides = {}) {
+  return fetch(`${url}/api/render`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      image: "data:image/png;base64,iVBORw0KGgo=",
+      fileName: "plan.png",
+      sourceType: "floor plan",
+      roomType: "living room",
+      style: "modern warm minimalism",
+      budget: "balanced",
+      homeArea: "89 sqm",
+      needs: "family of three",
+      keepItems: "load-bearing walls",
+      priorities: ["storage", "lighting"],
+      ...overrides,
+    }),
+  });
+}
+
 async function verifyMockedSuccessPath() {
   const mock = await createMockUpstream();
   const renderPort = String(6200 + Math.floor(Math.random() * 1000));
@@ -102,27 +132,19 @@ async function verifyMockedSuccessPath() {
 
   try {
     await waitForServer(renderBaseUrl);
-    const response = await fetch(`${renderBaseUrl}/api/render`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        image: "data:image/png;base64,iVBORw0KGgo=",
-        fileName: "plan.png",
-        roomType: "living room",
-        style: "modern warm minimalism",
-        budget: "balanced",
-        priorities: ["storage", "lighting"],
-      }),
-    });
-
+    const response = await postRender(renderBaseUrl);
     assert.equal(response.status, 200);
     const data = await response.json();
     assert.equal(data.b64, "mock-image-base64");
+    assert.ok(data.designBasis.length >= 4);
+    assert.ok(data.shoppingList.length >= 4);
+    assert.ok(data.nextSteps.length >= 3);
     assert.equal(mock.calls.length, 1);
     assert.equal(mock.calls[0].authorization, "Bearer fake-test-key");
     assert.match(mock.calls[0].contentType, /multipart\/form-data/);
     assert.match(mock.calls[0].body, /test-image-model/);
-    assert.match(mock.calls[0].body, /Create a realistic interior renovation concept render/);
+    assert.match(mock.calls[0].body, /Input type: floor plan/);
+    assert.match(mock.calls[0].body, /Home size or layout note: 89 sqm/);
   } finally {
     renderServer.kill();
     mock.server.close();
@@ -146,18 +168,12 @@ async function verifyDemoMode() {
   try {
     const health = await waitForServer(renderBaseUrl);
     assert.equal(health.mock, true);
-    const response = await fetch(`${renderBaseUrl}/api/render`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        image: "data:image/png;base64,iVBORw0KGgo=",
-        fileName: "plan.png",
-      }),
-    });
+    const response = await postRender(renderBaseUrl, { sourceType: "room photo", roomType: "bedroom" });
     assert.equal(response.status, 200);
     const data = await response.json();
-    assert.match(data.note, /演示模式/);
     assert.ok(data.b64.length > 20);
+    assert.ok(data.designBasis.some((item) => item.includes("房间实拍")));
+    assert.ok(data.shoppingList.some((item) => item.includes("床")));
   } finally {
     renderServer.kill();
   }
@@ -172,7 +188,7 @@ async function verifyDemoMode() {
 
     const home = await fetch(`${baseUrl}/`);
     assert.equal(home.status, 200);
-    assert.match(await home.text(), /AI 装修效果图/);
+    assert.match(await home.text(), /insightPanel/);
 
     const options = await fetch(`${baseUrl}/api/render`, {
       method: "OPTIONS",
@@ -181,14 +197,7 @@ async function verifyDemoMode() {
     assert.equal(options.status, 204);
     assert.equal(options.headers.get("access-control-allow-origin"), "*");
 
-    const render = await fetch(`${baseUrl}/api/render`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        image: "data:image/png;base64,iVBORw0KGgo=",
-        fileName: "plan.png",
-      }),
-    });
+    const render = await postRender(baseUrl);
     assert.equal(render.status, 500);
     const error = await render.json();
     assert.match(error.error.message, /IMAGE_API_KEY/);

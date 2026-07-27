@@ -86,11 +86,13 @@ async function handleRender(request, response) {
 
   const imageFile = dataUrlToBlob(payload.image, payload.fileName || "floor-plan.png");
   const prompt = buildRenovationPrompt(payload);
+  const designMeta = buildDesignMeta(payload);
 
   if (mockRender) {
     sendJson(response, 200, {
       b64: mockPreviewImage(),
       prompt,
+      ...designMeta,
       note: "已使用本地演示模式生成预览。配置真实模型后会返回 AI 装修效果图。",
     });
     return;
@@ -127,6 +129,7 @@ async function handleRender(request, response) {
       imageUrl: firstImage.url,
       b64: firstImage.b64_json,
       prompt,
+      ...designMeta,
       note: "生成完成。建议保留原平面图，再用同一参数多生成几版做风格比较。",
     });
   } catch (error) {
@@ -166,18 +169,102 @@ function sanitizeFileName(fileName) {
 function buildRenovationPrompt(payload) {
   const priorities = Array.isArray(payload.priorities) ? payload.priorities.join(", ") : "storage, lighting";
   const needs = payload.needs ? `User needs: ${payload.needs}.` : "User needs: practical family living.";
+  const keepItems = payload.keepItems ? `Elements to preserve: ${payload.keepItems}.` : "Preserve structural constraints and useful existing furniture when visible.";
+  const homeArea = payload.homeArea ? `Home size or layout note: ${payload.homeArea}.` : "Infer the layout scale from the uploaded image.";
   return [
-    "Create a realistic interior renovation concept render from the uploaded floor plan.",
-    "Preserve the original layout logic, walls, doors, windows, circulation, and room proportions.",
+    "Create a realistic interior renovation concept render from the uploaded floor plan or room photo.",
+    "First infer the layout logic from the image: walls, doors, windows, circulation, room proportions, lighting direction, and visible constraints.",
+    `Input type: ${payload.sourceType || "floor plan"}.`,
     `Room scope: ${payload.roomType || "whole home"}.`,
     `Interior style: ${payload.style || "modern warm minimalism"}.`,
     `Budget level: ${payload.budget || "balanced"}.`,
+    homeArea,
     `Optimization priorities: ${priorities}.`,
     needs,
+    keepItems,
     "Show furniture placement, material palette, lighting atmosphere, storage strategy, and soft decor.",
+    "Make the render suitable for a furniture shopping journey: include sofa, tables, cabinets, lighting, curtains, rugs, and storage opportunities when relevant.",
     "The result should look like a polished residential design visualization, not a technical blueprint.",
     "Avoid impossible structural changes and avoid adding text labels or watermarks.",
   ].join(" ");
+}
+
+function buildDesignMeta(payload) {
+  const sourceLabel = payload.sourceType === "room photo" ? "房间实拍" : "户型/平面图";
+  const roomLabel = roomTypeLabel(payload.roomType);
+  const styleLabel = styleLabelFor(payload.style);
+  const budgetLabel = budgetLabelFor(payload.budget);
+  const priorities = Array.isArray(payload.priorities) && payload.priorities.length > 0 ? payload.priorities : ["storage", "lighting"];
+  const priorityText = priorities.map(priorityLabel).join("、");
+
+  return {
+    designBasis: [
+      `输入依据：${sourceLabel}，优先保留门窗、墙体、动线和可见空间比例。`,
+      `方案范围：${roomLabel}${payload.homeArea ? `，面积/户型备注为 ${payload.homeArea}` : "，面积由上传图辅助判断"}。`,
+      `风格与预算：${styleLabel}，${budgetLabel}，重点优化 ${priorityText}。`,
+      `生活需求：${payload.needs || "默认按日常家庭居住、收纳和舒适动线处理"}。`,
+      `保留元素：${payload.keepItems || "默认不做明显结构拆改，保留图片中的关键限制" }。`,
+    ],
+    shoppingList: shoppingListFor(payload),
+    nextSteps: [
+      "补充房屋尺寸、层高、门窗位置后，可以把效果图升级成更可信的平面布置方案。",
+      "从同一张图生成 3 个风格变体，用于对比预算、采光和收纳取舍。",
+      "把满意方案拆成家具清单，再对接沙发、柜体、灯具、窗帘和地毯商品。",
+    ],
+  };
+}
+
+function shoppingListFor(payload) {
+  const room = payload.roomType || "whole home";
+  const base = {
+    "living room": ["模块沙发或三人位沙发", "圆角茶几/边几", "电视柜或整墙收纳柜", "落地灯与主灯", "地毯、窗帘、抱枕"],
+    bedroom: ["软包床或木质床架", "床头柜与阅读灯", "衣柜/斗柜收纳", "遮光窗帘", "床品与地毯"],
+    kitchen: ["橱柜与高柜收纳", "餐桌或岛台", "餐椅", "操作照明", "墙面与台面材料"],
+    bathroom: ["浴室柜", "镜柜与照明", "干湿分区五金", "收纳架", "防滑地面材料"],
+    "whole home": ["客厅沙发组合", "餐桌椅与餐边柜", "卧室床具与衣柜", "全屋灯光", "窗帘、地毯和软装"],
+  };
+  return base[room] || base["whole home"];
+}
+
+function roomTypeLabel(roomType) {
+  const labels = {
+    "whole home": "整屋",
+    "living room": "客厅",
+    bedroom: "卧室",
+    kitchen: "厨房",
+    bathroom: "卫浴",
+  };
+  return labels[roomType] || "整屋";
+}
+
+function styleLabelFor(style) {
+  const labels = {
+    "modern warm minimalism": "现代暖调极简",
+    "japanese wabi-sabi": "日式侘寂",
+    "french cream": "法式奶油",
+    "new chinese": "新中式",
+    "industrial loft": "工业 Loft",
+  };
+  return labels[style] || "现代暖调极简";
+}
+
+function budgetLabelFor(budget) {
+  const labels = {
+    practical: "实用经济预算",
+    balanced: "品质平衡预算",
+    premium: "高端质感预算",
+  };
+  return labels[budget] || "品质平衡预算";
+}
+
+function priorityLabel(priority) {
+  const labels = {
+    storage: "收纳",
+    lighting: "采光",
+    "traffic flow": "动线",
+    "child friendly": "儿童友好",
+  };
+  return labels[priority] || priority;
 }
 
 function mockPreviewImage() {
