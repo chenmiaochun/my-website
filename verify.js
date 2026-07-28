@@ -18,6 +18,11 @@ assert.match(files.html, /id="insightPanel"/);
 assert.match(files.html, /id="basisList"/);
 assert.match(files.html, /id="shoppingList"/);
 assert.match(files.html, /id="nextStepList"/);
+assert.match(files.html, /class="stage-progress"/);
+assert.match(files.html, /id="fileSummary"/);
+assert.match(files.html, /id="renderLoading"/);
+assert.match(files.html, /maxFileBytes = 10 \* 1024 \* 1024/);
+assert.match(files.html, /setStage\("result"\)/);
 assert.match(files.html, /apiPath\("\/api\/render"\)/);
 assert.match(files.html, /\/api\/health/);
 assert.equal(/id="planInput"[^>]+required/.test(files.html), false, "file input should use visible JS validation");
@@ -25,6 +30,9 @@ assert.equal(/id="planInput"[^>]+required/.test(files.html), false, "file input 
 assert.match(files.css, /\.studio-panel/);
 assert.match(files.css, /\.mode-set/);
 assert.match(files.css, /\.insight-panel/);
+assert.match(files.css, /\.stage-progress/);
+assert.match(files.css, /\.render-loading/);
+assert.match(files.css, /\[hidden\] \{\s+display: none !important;/);
 assert.match(files.css, /@media \(max-width: 680px\)/);
 
 assert.match(files.server, /IMAGE_API_KEY/);

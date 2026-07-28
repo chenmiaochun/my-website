@@ -35,6 +35,11 @@
       </section>
 
       <section class="studio-panel" aria-label="上传平面图生成装修效果">
+        <ol class="stage-progress" aria-label="第一阶段生成进度">
+          <li class="active" data-stage="upload"><span>1</span><strong>上传空间图</strong></li>
+          <li data-stage="brief"><span>2</span><strong>填写装修需求</strong></li>
+          <li data-stage="result"><span>3</span><strong>查看效果与依据</strong></li>
+        </ol>
         <form class="render-form" id="renderForm">
           <div class="upload-zone" id="uploadZone">
             <input id="planInput" name="plan" type="file" accept="image/*" />
@@ -43,6 +48,13 @@
               <span>平面图用于判断结构，实拍图用于快速换风格。第一步先把方向跑通。</span>
             </div>
             <img id="planPreview" alt="已上传的平面图预览" hidden />
+          </div>
+          <div class="file-summary" id="fileSummary" hidden>
+            <div>
+              <strong id="fileName"></strong>
+              <span id="fileMeta"></span>
+            </div>
+            <button type="button" id="removeFileButton">移除</button>
           </div>
 
           <fieldset class="mode-set">
@@ -119,6 +131,11 @@
             <div id="resultEmpty">
               <strong>你的空间预览会显示在这里</strong>
               <span>生成通常需要几十秒到两分钟，请保持页面打开。</span>
+            </div>
+            <div class="render-loading" id="renderLoading" hidden>
+              <span class="loading-mark" aria-hidden="true"></span>
+              <strong id="loadingTitle">正在读取空间信息</strong>
+              <span id="loadingDetail">分析房间边界、门窗与主要动线</span>
             </div>
           </div>
           <a class="download-link" id="downloadLink" href="#" download="renovation-render.png" hidden>下载效果图</a>
@@ -208,12 +225,22 @@
       const formNote = document.querySelector("#formNote");
       const resultImage = document.querySelector("#resultImage");
       const resultEmpty = document.querySelector("#resultEmpty");
+      const renderLoading = document.querySelector("#renderLoading");
+      const loadingTitle = document.querySelector("#loadingTitle");
+      const loadingDetail = document.querySelector("#loadingDetail");
       const downloadLink = document.querySelector("#downloadLink");
       const insightPanel = document.querySelector("#insightPanel");
       const basisList = document.querySelector("#basisList");
       const shoppingList = document.querySelector("#shoppingList");
       const nextStepList = document.querySelector("#nextStepList");
+      const fileSummary = document.querySelector("#fileSummary");
+      const fileName = document.querySelector("#fileName");
+      const fileMeta = document.querySelector("#fileMeta");
+      const removeFileButton = document.querySelector("#removeFileButton");
+      const stageItems = [...document.querySelectorAll(".stage-progress li")];
       const apiOrigin = window.location.protocol === "file:" ? "http://localhost:5177" : "";
+      const maxFileBytes = 10 * 1024 * 1024;
+      let loadingTimer;
 
       const fileToDataUrl = (file) =>
         new Promise((resolve, reject) => {
@@ -228,6 +255,48 @@
       const setStatus = (text, tone = "idle") => {
         statusBadge.textContent = text;
         statusBadge.dataset.tone = tone;
+      };
+
+      const setStage = (stage) => {
+        const currentIndex = stageItems.findIndex((item) => item.dataset.stage === stage);
+        stageItems.forEach((item, index) => {
+          item.classList.toggle("active", index === currentIndex);
+          item.classList.toggle("complete", index < currentIndex);
+        });
+      };
+
+      const clearFile = () => {
+        planInput.value = "";
+        planPreview.removeAttribute("src");
+        planPreview.hidden = true;
+        uploadEmpty.hidden = false;
+        fileSummary.hidden = true;
+        setStatus("待上传");
+        setStage("upload");
+      };
+
+      const startLoading = () => {
+        const messages = [
+          ["正在读取空间信息", "分析房间边界、门窗与主要动线"],
+          ["正在匹配装修需求", "结合风格、预算和家庭生活方式"],
+          ["正在生成效果图", "保持原有结构并补充材质、家具与灯光"],
+        ];
+        let index = 0;
+        const showMessage = () => {
+          [loadingTitle.textContent, loadingDetail.textContent] = messages[index];
+          index = Math.min(index + 1, messages.length - 1);
+        };
+        showMessage();
+        renderLoading.hidden = false;
+        resultEmpty.hidden = true;
+        resultImage.hidden = true;
+        clearInterval(loadingTimer);
+        loadingTimer = setInterval(showMessage, 8000);
+      };
+
+      const stopLoading = () => {
+        clearInterval(loadingTimer);
+        renderLoading.hidden = true;
       };
 
       const renderList = (node, items = []) => {
@@ -265,11 +334,30 @@
       planInput.addEventListener("change", async () => {
         const file = planInput.files?.[0];
         if (!file) return;
+        if (!file.type.startsWith("image/")) {
+          clearFile();
+          formNote.textContent = "请选择 JPG、PNG 或 WebP 图片。";
+          setStatus("格式不支持", "error");
+          return;
+        }
+        if (file.size > maxFileBytes) {
+          clearFile();
+          formNote.textContent = "图片不能超过 10MB，请压缩后重新上传。";
+          setStatus("文件过大", "error");
+          return;
+        }
         planPreview.src = await fileToDataUrl(file);
         planPreview.hidden = false;
         uploadEmpty.hidden = true;
+        fileName.textContent = file.name;
+        fileMeta.textContent = `${(file.size / 1024 / 1024).toFixed(1)} MB · 可点击图片重新选择`;
+        fileSummary.hidden = false;
+        formNote.textContent = "素材已就绪，继续填写装修需求后即可生成。";
         setStatus("已上传", "ready");
+        setStage("brief");
       });
+
+      removeFileButton.addEventListener("click", clearFile);
 
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
@@ -284,6 +372,8 @@
         submitButton.textContent = "正在生成...";
         formNote.textContent = "正在分析平面图并生成装修效果图，请稍等。";
         setStatus("生成中", "busy");
+        setStage("result");
+        startLoading();
 
         try {
           const formData = new FormData(form);
@@ -324,7 +414,12 @@
             ? "没有连接到本地生成服务。请确认 server.js 正在运行，然后刷新页面再试。"
             : error.message;
           setStatus("失败", "error");
+          resultEmpty.hidden = false;
+          resultEmpty.querySelector("strong").textContent = "这次没有生成成功";
+          resultEmpty.querySelector("span").textContent = "请检查本地服务或稍后直接重试，已填写的需求不会丢失。";
+          setStage("brief");
         } finally {
+          stopLoading();
           submitButton.disabled = false;
           submitButton.textContent = "生成装修效果图";
         }
