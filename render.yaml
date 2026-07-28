@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: my-website-renovation-api
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: IMAGE_API_KEY
+        sync: false
+      - key: IMAGE_API_BASE_URL
+        value: https://xiaoji.baziapi.site/v1
+      - key: IMAGE_MODEL
+        value: gpt-image-1
+      - key: IMAGE_SIZE
+        value: 1024x1024
+      - key: IMAGE_REQUEST_TIMEOUT_MS
+        value: 180000
+      - key: RENDER_REQUEST_LIMIT
+        value: 6
+      - key: MAX_CONCURRENT_RENDERS
+        value: 2

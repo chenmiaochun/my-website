@@ -8,6 +8,8 @@ const files = {
   css: readFileSync("styles.css", "utf8"),
   server: readFileSync("server.js", "utf8"),
   readme: readFileSync("README.md", "utf8"),
+  package: readFileSync("package.json", "utf8"),
+  render: readFileSync("render.yaml", "utf8"),
 };
 
 assert.match(files.html, /id="planInput"/);
@@ -54,6 +56,15 @@ assert.match(files.server, /Promise\.allSettled/);
 assert.match(files.server, /requestImageVariant/);
 assert.match(files.server, /shoppingListFor/);
 assert.match(files.server, /IMAGE_REQUEST_TIMEOUT_MS \|\| 180000/);
+assert.match(files.server, /RENDER_REQUEST_LIMIT/);
+assert.match(files.server, /MAX_CONCURRENT_RENDERS/);
+assert.match(files.server, /reserveRenderQuota/);
+assert.match(files.server, /variantsPerRender: 3/);
+
+assert.match(files.package, /"start": "node server\.js"/);
+assert.match(files.package, /"test": "node verify\.js"/);
+assert.match(files.render, /healthCheckPath: \/api\/health/);
+assert.match(files.render, /sync: false/);
 
 assert.match(files.readme, /GET \/api\/health/);
 assert.match(files.readme, /MOCK_RENDER/);
@@ -208,12 +219,47 @@ async function verifyDemoMode() {
   }
 }
 
+async function verifyRateLimit() {
+  const renderPort = String(8200 + Math.floor(Math.random() * 1000));
+  const renderServer = spawn(process.execPath, ["server.js"], {
+    env: {
+      ...process.env,
+      PORT: renderPort,
+      SKIP_DOTENV: "1",
+      IMAGE_API_KEY: "fake-test-key",
+      MOCK_RENDER: "1",
+      RENDER_REQUEST_LIMIT: "1",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const renderBaseUrl = `http://localhost:${renderPort}`;
+
+  try {
+    const health = await waitForServer(renderBaseUrl);
+    assert.equal(health.ready, true);
+    assert.equal(health.variantsPerRender, 3);
+
+    const first = await postRender(renderBaseUrl);
+    assert.equal(first.status, 200);
+
+    const second = await postRender(renderBaseUrl);
+    assert.equal(second.status, 429);
+    assert.ok(Number(second.headers.get("retry-after")) > 0);
+    const error = await second.json();
+    assert.match(error.error.message, /生成次数已达上限/);
+  } finally {
+    renderServer.kill();
+  }
+}
+
 (async () => {
   try {
     const health = await waitForServer();
     assert.equal(health.ok, true);
     assert.equal(health.upstream, "https://xiaoji.baziapi.site/v1");
     assert.equal(health.mock, false);
+    assert.equal(health.ready, false);
+    assert.equal(health.variantsPerRender, 3);
 
     const home = await fetch(`${baseUrl}/`);
     assert.equal(home.status, 200);
@@ -233,6 +279,7 @@ async function verifyDemoMode() {
 
     await verifyMockedSuccessPath();
     await verifyDemoMode();
+    await verifyRateLimit();
 
     console.log("Verification passed");
   } finally {

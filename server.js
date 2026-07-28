@@ -12,6 +12,11 @@ const imageModel = process.env.IMAGE_MODEL || "gpt-image-1";
 const requestTimeoutMs = Number(process.env.IMAGE_REQUEST_TIMEOUT_MS || 180000);
 const maxBodyBytes = Number(process.env.MAX_UPLOAD_BYTES || 12 * 1024 * 1024);
 const mockRender = process.env.MOCK_RENDER === "1";
+const renderWindowMs = Number(process.env.RENDER_RATE_WINDOW_MS || 60 * 60 * 1000);
+const renderRequestLimit = Number(process.env.RENDER_REQUEST_LIMIT || 6);
+const maxConcurrentRenders = Number(process.env.MAX_CONCURRENT_RENDERS || 2);
+const renderUsage = new Map();
+let activeRenderRequests = 0;
 
 function loadDotEnv() {
   const envPath = path.join(rootDir, ".env");
@@ -48,7 +53,15 @@ const server = http.createServer(async (request, response) => {
     }
 
     if (request.method === "GET" && request.url === "/api/health") {
-      sendJson(response, 200, { ok: true, model: imageModel, upstream: apiBaseUrl, mock: mockRender });
+      sendJson(response, 200, {
+        ok: true,
+        ready: Boolean(process.env.IMAGE_API_KEY),
+        model: imageModel,
+        upstream: apiBaseUrl,
+        mock: mockRender,
+        variantsPerRender: 3,
+        activeRenders: activeRenderRequests,
+      });
       return;
     }
 
@@ -68,7 +81,7 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
-server.listen(port, () => {
+server.listen(port, "0.0.0.0", () => {
   console.log(`Renovation studio running at http://localhost:${port}`);
 });
 
@@ -80,6 +93,22 @@ async function handleRender(request, response) {
     });
     return;
   }
+
+  if (activeRenderRequests >= maxConcurrentRenders) {
+    response.setHeader("Retry-After", "30");
+    sendJson(response, 429, { error: { message: "当前生成任务较多，请约 30 秒后重试。" } });
+    return;
+  }
+
+  const quota = reserveRenderQuota(request);
+  if (!quota.allowed) {
+    response.setHeader("Retry-After", String(quota.retryAfterSeconds));
+    sendJson(response, 429, { error: { message: `生成次数已达上限，请约 ${quota.retryAfterSeconds} 秒后重试。` } });
+    return;
+  }
+
+  activeRenderRequests += 1;
+  try {
 
   const payload = JSON.parse(await readRequestBody(request));
   validatePayload(payload);
@@ -122,6 +151,40 @@ async function handleRender(request, response) {
       ? `已生成 ${variants.length} 个方案，另有 ${failedCount} 个方案生成失败，可稍后重试补齐。`
       : "3 个风格方案已生成完成，请选择最接近客户预期的一版。",
   });
+  } finally {
+    activeRenderRequests -= 1;
+  }
+}
+
+function reserveRenderQuota(request) {
+  const now = Date.now();
+  const clientId = getClientId(request);
+  const recentRequests = (renderUsage.get(clientId) || []).filter((timestamp) => now - timestamp < renderWindowMs);
+
+  if (recentRequests.length >= renderRequestLimit) {
+    return {
+      allowed: false,
+      retryAfterSeconds: Math.max(1, Math.ceil((renderWindowMs - (now - recentRequests[0])) / 1000)),
+    };
+  }
+
+  recentRequests.push(now);
+  renderUsage.set(clientId, recentRequests);
+  if (renderUsage.size > 5000) pruneRenderUsage(now);
+  return { allowed: true, retryAfterSeconds: 0 };
+}
+
+function getClientId(request) {
+  const forwardedFor = String(request.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  return forwardedFor || request.socket.remoteAddress || "unknown";
+}
+
+function pruneRenderUsage(now) {
+  for (const [clientId, timestamps] of renderUsage) {
+    const recent = timestamps.filter((timestamp) => now - timestamp < renderWindowMs);
+    if (recent.length) renderUsage.set(clientId, recent);
+    else renderUsage.delete(clientId);
+  }
 }
 
 async function requestImageVariant(payload, style, index, imageFile, apiKey) {

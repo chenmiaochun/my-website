@@ -1,0 +1,13 @@
+{
+  "name": "my-website-renovation-studio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI renovation studio with three style variants",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node verify.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
