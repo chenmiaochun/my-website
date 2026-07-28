@@ -27,6 +27,9 @@ assert.match(files.html, /id="variantSection"/);
 assert.match(files.html, /id="variantGrid"/);
 assert.match(files.html, /renderVariants/);
 assert.match(files.html, /生成 3 张装修效果图/);
+assert.match(files.html, /name="variantStyles"/);
+assert.match(files.html, /id="styleCount"/);
+assert.match(files.html, /variantStyles\.length !== 3/);
 assert.match(files.html, /name="api-origin"/);
 assert.match(files.html, /isStaticHosting/);
 assert.match(files.html, /AI 后端待部署/);
@@ -43,6 +46,8 @@ assert.match(files.css, /\.stage-progress/);
 assert.match(files.css, /\.render-loading/);
 assert.match(files.css, /\.variant-grid/);
 assert.match(files.css, /\.variant-card\.selected/);
+assert.match(files.css, /\.style-picker/);
+assert.match(files.css, /\.style-option:has\(input:checked\)/);
 assert.match(files.css, /\[hidden\] \{\s+display: none !important;/);
 assert.match(files.css, /@media \(max-width: 680px\)/);
 
@@ -54,6 +59,7 @@ assert.match(files.server, /buildDesignMeta/);
 assert.match(files.server, /chooseVariantStyles/);
 assert.match(files.server, /Promise\.allSettled/);
 assert.match(files.server, /requestImageVariant/);
+assert.match(files.server, /supportedVariantStyles/);
 assert.match(files.server, /shoppingListFor/);
 assert.match(files.server, /IMAGE_REQUEST_TIMEOUT_MS \|\| 180000/);
 assert.match(files.server, /RENDER_REQUEST_LIMIT/);
@@ -135,6 +141,7 @@ async function postRender(url, overrides = {}) {
       sourceType: "floor plan",
       roomType: "living room",
       style: "modern warm minimalism",
+      variantStyles: ["modern warm minimalism", "french cream", "new chinese"],
       budget: "balanced",
       homeArea: "89 sqm",
       needs: "family of three",
@@ -214,6 +221,21 @@ async function verifyDemoMode() {
     assert.equal(data.variants[1].style, "french cream");
     assert.ok(data.designBasis.some((item) => item.includes("房间实拍")));
     assert.ok(data.shoppingList.some((item) => item.includes("床")));
+
+    const customResponse = await postRender(renderBaseUrl, {
+      variantStyles: ["industrial loft", "japanese wabi-sabi", "french cream"],
+      style: "industrial loft",
+    });
+    assert.equal(customResponse.status, 200);
+    const customData = await customResponse.json();
+    assert.deepEqual(customData.variants.map((variant) => variant.style), ["industrial loft", "japanese wabi-sabi", "french cream"]);
+
+    const invalidResponse = await postRender(renderBaseUrl, {
+      variantStyles: ["new chinese", "new chinese", "french cream"],
+    });
+    assert.equal(invalidResponse.status, 500);
+    const invalidData = await invalidResponse.json();
+    assert.match(invalidData.error.message, /3 个不同且有效/);
   } finally {
     renderServer.kill();
   }

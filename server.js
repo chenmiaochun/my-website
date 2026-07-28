@@ -114,7 +114,7 @@ async function handleRender(request, response) {
   validatePayload(payload);
 
   const imageFile = dataUrlToBlob(payload.image, payload.fileName || "floor-plan.png");
-  const variantStyles = chooseVariantStyles(payload.style);
+  const variantStyles = chooseVariantStyles(payload.variantStyles, payload.style);
   const designMeta = buildDesignMeta(payload);
 
   if (mockRender) {
@@ -244,6 +244,14 @@ function validatePayload(payload) {
   if (!payload || typeof payload !== "object") throw new Error("请求体格式无效。");
   if (!payload.image || typeof payload.image !== "string") throw new Error("请上传平面图。");
   if (!payload.image.startsWith("data:image/")) throw new Error("只支持图片文件。");
+  if (payload.variantStyles !== undefined) {
+    if (!Array.isArray(payload.variantStyles)) throw new Error("装修风格参数格式无效。");
+    const uniqueStyles = new Set(payload.variantStyles);
+    const validStyles = [...uniqueStyles].every((style) => supportedVariantStyles.has(style));
+    if (payload.variantStyles.length !== 3 || uniqueStyles.size !== 3 || !validStyles) {
+      throw new Error("请选择 3 个不同且有效的装修风格。");
+    }
+  }
 }
 
 function dataUrlToBlob(dataUrl, fileName) {
@@ -287,7 +295,16 @@ function buildRenovationPrompt(payload, variantIndex = 0) {
   ].join(" ");
 }
 
-function chooseVariantStyles(selectedStyle) {
+const supportedVariantStyles = new Set([
+  "modern warm minimalism",
+  "japanese wabi-sabi",
+  "french cream",
+  "new chinese",
+  "industrial loft",
+]);
+
+function chooseVariantStyles(requestedStyles, selectedStyle) {
+  if (Array.isArray(requestedStyles) && requestedStyles.length === 3) return requestedStyles;
   const combinations = {
     "modern warm minimalism": ["modern warm minimalism", "french cream", "new chinese"],
     "japanese wabi-sabi": ["japanese wabi-sabi", "modern warm minimalism", "new chinese"],

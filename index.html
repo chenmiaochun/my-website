@@ -76,16 +76,6 @@
               </select>
             </label>
             <label>
-              装修风格
-              <select name="style">
-                <option value="modern warm minimalism">现代暖调极简</option>
-                <option value="japanese wabi-sabi">日式侘寂</option>
-                <option value="french cream">法式奶油</option>
-                <option value="new chinese">新中式</option>
-                <option value="industrial loft">工业 Loft</option>
-              </select>
-            </label>
-            <label>
               预算档位
               <select name="budget">
                 <option value="practical">实用经济</option>
@@ -106,6 +96,38 @@
               <input name="keepItems" type="text" placeholder="例如：承重墙、阳台、现有餐桌" />
             </label>
           </div>
+
+          <fieldset class="style-picker">
+            <legend>
+              <span>选择 3 个对比风格</span>
+              <small id="styleCount">已选 3 / 3</small>
+            </legend>
+            <label class="style-option">
+              <input type="checkbox" name="variantStyles" value="modern warm minimalism" checked />
+              <i class="style-swatch modern" aria-hidden="true"></i>
+              <span><strong>现代暖调极简</strong><small>浅木、暖白、简洁耐看</small></span>
+            </label>
+            <label class="style-option">
+              <input type="checkbox" name="variantStyles" value="french cream" checked />
+              <i class="style-swatch french" aria-hidden="true"></i>
+              <span><strong>法式奶油</strong><small>柔和明亮、精致浪漫</small></span>
+            </label>
+            <label class="style-option">
+              <input type="checkbox" name="variantStyles" value="new chinese" checked />
+              <i class="style-swatch chinese" aria-hidden="true"></i>
+              <span><strong>新中式</strong><small>现代木作、克制雅致</small></span>
+            </label>
+            <label class="style-option">
+              <input type="checkbox" name="variantStyles" value="japanese wabi-sabi" />
+              <i class="style-swatch japanese" aria-hidden="true"></i>
+              <span><strong>日式侘寂</strong><small>自然肌理、安静松弛</small></span>
+            </label>
+            <label class="style-option">
+              <input type="checkbox" name="variantStyles" value="industrial loft" />
+              <i class="style-swatch industrial" aria-hidden="true"></i>
+              <span><strong>工业 Loft</strong><small>金属材质、利落个性</small></span>
+            </label>
+          </fieldset>
 
           <fieldset class="option-set">
             <legend>重点优化</legend>
@@ -252,6 +274,8 @@
       const fileMeta = document.querySelector("#fileMeta");
       const removeFileButton = document.querySelector("#removeFileButton");
       const stageItems = [...document.querySelectorAll(".stage-progress li")];
+      const styleInputs = [...document.querySelectorAll('input[name="variantStyles"]')];
+      const styleCount = document.querySelector("#styleCount");
       const configuredApiOrigin = document.querySelector('meta[name="api-origin"]')?.content.trim() || "";
       const isStaticHosting = /\.github\.io$/i.test(window.location.hostname);
       const apiOrigin = configuredApiOrigin || (window.location.protocol === "file:" ? "http://localhost:5177" : "");
@@ -279,6 +303,13 @@
           item.classList.toggle("active", index === currentIndex);
           item.classList.toggle("complete", index < currentIndex);
         });
+      };
+
+      const updateStyleCount = () => {
+        const count = styleInputs.filter((input) => input.checked).length;
+        styleCount.textContent = `已选 ${count} / 3`;
+        styleCount.dataset.tone = count === 3 ? "ready" : "error";
+        return count;
       };
 
       const clearFile = () => {
@@ -452,6 +483,21 @@
 
       removeFileButton.addEventListener("click", clearFile);
 
+      styleInputs.forEach((input) => {
+        input.addEventListener("change", () => {
+          const selectedCount = styleInputs.filter((option) => option.checked).length;
+          if (selectedCount > 3) {
+            input.checked = false;
+            formNote.textContent = "一次最多选择 3 个风格，请先取消一个已选风格。";
+          } else if (selectedCount < 3) {
+            formNote.textContent = "还需要选择 3 个风格，才能生成对比方案。";
+          } else {
+            formNote.textContent = "3 个对比风格已选好，上传空间图后即可生成。";
+          }
+          updateStyleCount();
+        });
+      });
+
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
         const file = planInput.files?.[0];
@@ -466,6 +512,14 @@
           return;
         }
 
+        const formData = new FormData(form);
+        const variantStyles = formData.getAll("variantStyles");
+        if (variantStyles.length !== 3) {
+          formNote.textContent = "请选择正好 3 个装修风格。";
+          setStatus("风格未选满", "error");
+          return;
+        }
+
         submitButton.disabled = true;
         submitButton.textContent = "正在生成 3 个方案...";
         formNote.textContent = "正在并行生成 3 种风格，通常需要一到三分钟，请保持页面打开。";
@@ -474,14 +528,14 @@
         startLoading();
 
         try {
-          const formData = new FormData(form);
           const priorities = formData.getAll("priorities");
           const payload = {
             image: await fileToDataUrl(file),
             fileName: file.name,
             sourceType: formData.get("sourceType"),
             roomType: formData.get("roomType"),
-            style: formData.get("style"),
+            style: variantStyles[0],
+            variantStyles,
             budget: formData.get("budget"),
             homeArea: formData.get("homeArea"),
             needs: formData.get("needs"),
