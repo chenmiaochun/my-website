@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="api-origin" content="" />
     <title>尚品居 AI 装修效果图</title>
     <link rel="preconnect" href="https://images.unsplash.com" />
     <link rel="stylesheet" href="./styles.css" />
@@ -114,15 +115,15 @@
             <label><input type="checkbox" name="priorities" value="child friendly" /> 儿童友好</label>
           </fieldset>
 
-          <button class="primary-button" type="submit" id="submitButton">生成装修效果图</button>
-          <p class="form-note" id="formNote">密钥只在本地服务端读取，不会暴露到浏览器。</p>
+          <button class="primary-button" type="submit" id="submitButton">生成 3 张装修效果图</button>
+          <p class="form-note" id="formNote">一次生成 3 种风格，会使用 3 次图片生成额度；密钥仅在本地服务端读取。</p>
         </form>
 
         <aside class="result-panel" aria-live="polite">
           <div class="result-toolbar">
             <div>
               <p>RESULT</p>
-              <h2>效果图预览</h2>
+              <h2>三方案效果预览</h2>
             </div>
             <span id="statusBadge">待上传</span>
           </div>
@@ -138,6 +139,16 @@
               <span id="loadingDetail">分析房间边界、门窗与主要动线</span>
             </div>
           </div>
+          <section class="variant-section" id="variantSection" hidden>
+            <div class="variant-heading">
+              <div>
+                <p>STYLE OPTIONS</p>
+                <h3>选择客户更喜欢的方向</h3>
+              </div>
+              <span id="variantCount"></span>
+            </div>
+            <div class="variant-grid" id="variantGrid"></div>
+          </section>
           <a class="download-link" id="downloadLink" href="#" download="renovation-render.png" hidden>下载效果图</a>
           <div class="insight-panel" id="insightPanel" hidden>
             <section>
@@ -229,6 +240,9 @@
       const loadingTitle = document.querySelector("#loadingTitle");
       const loadingDetail = document.querySelector("#loadingDetail");
       const downloadLink = document.querySelector("#downloadLink");
+      const variantSection = document.querySelector("#variantSection");
+      const variantGrid = document.querySelector("#variantGrid");
+      const variantCount = document.querySelector("#variantCount");
       const insightPanel = document.querySelector("#insightPanel");
       const basisList = document.querySelector("#basisList");
       const shoppingList = document.querySelector("#shoppingList");
@@ -238,7 +252,9 @@
       const fileMeta = document.querySelector("#fileMeta");
       const removeFileButton = document.querySelector("#removeFileButton");
       const stageItems = [...document.querySelectorAll(".stage-progress li")];
-      const apiOrigin = window.location.protocol === "file:" ? "http://localhost:5177" : "";
+      const configuredApiOrigin = document.querySelector('meta[name="api-origin"]')?.content.trim() || "";
+      const isStaticHosting = /\.github\.io$/i.test(window.location.hostname);
+      const apiOrigin = configuredApiOrigin || (window.location.protocol === "file:" ? "http://localhost:5177" : "");
       const maxFileBytes = 10 * 1024 * 1024;
       let loadingTimer;
 
@@ -290,6 +306,9 @@
         renderLoading.hidden = false;
         resultEmpty.hidden = true;
         resultImage.hidden = true;
+        variantSection.hidden = true;
+        insightPanel.hidden = true;
+        downloadLink.hidden = true;
         clearInterval(loadingTimer);
         loadingTimer = setInterval(showMessage, 8000);
       };
@@ -308,11 +327,78 @@
         });
       };
 
-      const showInsights = (data) => {
-        renderList(basisList, data.designBasis || []);
+      const showInsights = (data, variant = {}) => {
+        renderList(basisList, variant.designBasis || data.designBasis || []);
         renderList(shoppingList, data.shoppingList || []);
         renderList(nextStepList, data.nextSteps || []);
         insightPanel.hidden = false;
+      };
+
+      const imageUrlFor = (variant) => variant.imageUrl || (variant.b64 ? `data:image/png;base64,${variant.b64}` : "");
+
+      const selectVariant = (variant, index, data) => {
+        const imageUrl = imageUrlFor(variant);
+        resultImage.src = imageUrl;
+        resultImage.alt = `${variant.styleLabel || "AI"}装修效果图`;
+        resultImage.hidden = false;
+        resultEmpty.hidden = true;
+        downloadLink.href = imageUrl;
+        downloadLink.download = `renovation-${variant.style || index + 1}.png`;
+        downloadLink.hidden = false;
+        showInsights(data, variant);
+
+        [...variantGrid.children].forEach((card, cardIndex) => {
+          const selected = cardIndex === index;
+          card.classList.toggle("selected", selected);
+          const button = card.querySelector("button");
+          button.textContent = selected ? "已选择" : "选择此方案";
+          button.setAttribute("aria-pressed", String(selected));
+        });
+      };
+
+      const renderVariants = (data) => {
+        const variants = Array.isArray(data.variants) && data.variants.length
+          ? data.variants
+          : [{
+              id: "variant-1",
+              style: "selected",
+              styleLabel: "首选方案",
+              concept: "根据当前装修需求生成",
+              imageUrl: data.imageUrl,
+              b64: data.b64,
+              designBasis: data.designBasis,
+            }];
+
+        variantGrid.innerHTML = "";
+        variants.forEach((variant, index) => {
+          const card = document.createElement("article");
+          card.className = "variant-card";
+
+          const image = document.createElement("img");
+          image.src = imageUrlFor(variant);
+          image.alt = `${variant.styleLabel || `方案 ${index + 1}`}预览`;
+
+          const copy = document.createElement("div");
+          const label = document.createElement("span");
+          label.textContent = `方案 ${String.fromCharCode(65 + index)}`;
+          const title = document.createElement("strong");
+          title.textContent = variant.styleLabel || `风格方案 ${index + 1}`;
+          const concept = document.createElement("p");
+          concept.textContent = variant.concept || "基于相同户型与需求生成";
+          copy.append(label, title, concept);
+
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = "选择此方案";
+          button.addEventListener("click", () => selectVariant(variant, index, data));
+          card.append(image, copy, button);
+          variantGrid.appendChild(card);
+        });
+
+        variantCount.textContent = `${variants.length} 个方案`;
+        variantSection.hidden = false;
+        selectVariant(variants[0], 0, data);
+        return variants.length;
       };
 
       if (window.location.protocol === "file:") {
@@ -329,6 +415,13 @@
             formNote.textContent = "当前是直接打开 HTML，但没有连接到本地服务。请先启动 server.js。";
             setStatus("服务未连接", "error");
           });
+      }
+
+      if (isStaticHosting && !configuredApiOrigin) {
+        submitButton.disabled = true;
+        submitButton.textContent = "AI 后端待部署";
+        formNote.textContent = "当前为 GitHub Pages 静态展示站；接入独立 HTTPS 后端后即可开放三方案生成。";
+        setStatus("静态展示", "idle");
       }
 
       planInput.addEventListener("change", async () => {
@@ -367,10 +460,15 @@
           setStatus("待上传", "error");
           return;
         }
+        if (isStaticHosting && !configuredApiOrigin) {
+          formNote.textContent = "GitHub Pages 无法运行生成服务，请先配置独立的 HTTPS API 地址。";
+          setStatus("服务待部署", "error");
+          return;
+        }
 
         submitButton.disabled = true;
-        submitButton.textContent = "正在生成...";
-        formNote.textContent = "正在分析平面图并生成装修效果图，请稍等。";
+        submitButton.textContent = "正在生成 3 个方案...";
+        formNote.textContent = "正在并行生成 3 种风格，通常需要一到三分钟，请保持页面打开。";
         setStatus("生成中", "busy");
         setStage("result");
         startLoading();
@@ -399,15 +497,9 @@
           const data = await response.json();
           if (!response.ok) throw new Error(data.error?.message || "生成失败，请稍后重试。");
 
-          const imageUrl = data.imageUrl || `data:image/png;base64,${data.b64}`;
-          resultImage.src = imageUrl;
-          resultImage.hidden = false;
-          resultEmpty.hidden = true;
-          downloadLink.href = imageUrl;
-          downloadLink.hidden = false;
-          showInsights(data);
+          const generatedCount = renderVariants(data);
           formNote.textContent = data.note || "生成完成，可以下载或继续调整参数。";
-          setStatus("已完成", "done");
+          setStatus(`已生成 ${generatedCount} 张`, "done");
         } catch (error) {
           const isNetworkError = error instanceof TypeError;
           formNote.textContent = isNetworkError
@@ -421,7 +513,7 @@
         } finally {
           stopLoading();
           submitButton.disabled = false;
-          submitButton.textContent = "生成装修效果图";
+          submitButton.textContent = "生成 3 张装修效果图";
         }
       });
     </script>

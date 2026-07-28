@@ -483,6 +483,109 @@ select {
   text-align: center;
 }
 
+.variant-section {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.variant-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.variant-heading p {
+  margin: 0 0 6px;
+  color: var(--clay);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 11px;
+}
+
+.variant-heading h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 400;
+}
+
+.variant-heading > span {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.variant-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.variant-card {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: #fffaf1;
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.variant-card.selected {
+  border-color: var(--sage);
+  box-shadow: inset 0 0 0 1px var(--sage);
+}
+
+.variant-card img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: #e9e0d3;
+}
+
+.variant-card > div {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  padding: 10px;
+}
+
+.variant-card span {
+  color: var(--clay);
+  font-size: 10px;
+}
+
+.variant-card strong {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.variant-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.variant-card button {
+  min-height: 36px;
+  margin: 0 10px 10px;
+  border: 1px solid var(--charcoal);
+  background: transparent;
+  color: var(--charcoal);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.variant-card.selected button {
+  border-color: var(--sage);
+  background: var(--sage);
+  color: var(--white);
+}
+
 .download-link,
 .service-band a {
   display: inline-flex;
@@ -781,6 +884,25 @@ footer strong {
 
   .control-grid {
     grid-template-columns: 1fr;
+  }
+
+  .variant-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .variant-card {
+    grid-template-columns: 110px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+  }
+
+  .variant-card img {
+    grid-row: 1 / 3;
+    height: 100%;
+    aspect-ratio: auto;
+  }
+
+  .variant-card button {
+    margin-left: 10px;
   }
 
   .workflow {

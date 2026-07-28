@@ -85,19 +85,48 @@ async function handleRender(request, response) {
   validatePayload(payload);
 
   const imageFile = dataUrlToBlob(payload.image, payload.fileName || "floor-plan.png");
-  const prompt = buildRenovationPrompt(payload);
+  const variantStyles = chooseVariantStyles(payload.style);
   const designMeta = buildDesignMeta(payload);
 
   if (mockRender) {
+    const variants = variantStyles.map((style, index) => buildMockVariant(payload, style, index));
     sendJson(response, 200, {
-      b64: mockPreviewImage(),
-      prompt,
+      variants,
+      b64: variants[0].b64,
+      prompt: variants[0].prompt,
       ...designMeta,
-      note: "已使用本地演示模式生成预览。配置真实模型后会返回 AI 装修效果图。",
+      note: "已使用本地演示模式生成 3 个风格方案。配置真实模型后会返回 AI 装修效果图。",
     });
     return;
   }
 
+  const results = await Promise.allSettled(
+    variantStyles.map((style, index) => requestImageVariant(payload, style, index, imageFile, apiKey)),
+  );
+  const variants = results.filter((result) => result.status === "fulfilled").map((result) => result.value);
+  const failedCount = results.length - variants.length;
+
+  if (variants.length === 0) {
+    const firstFailure = results.find((result) => result.status === "rejected");
+    sendJson(response, 502, { error: { message: firstFailure?.reason?.message || "三个风格方案均生成失败，请稍后重试。" } });
+    return;
+  }
+
+  sendJson(response, 200, {
+    variants,
+    imageUrl: variants[0].imageUrl,
+    b64: variants[0].b64,
+    prompt: variants[0].prompt,
+    ...designMeta,
+    note: failedCount
+      ? `已生成 ${variants.length} 个方案，另有 ${failedCount} 个方案生成失败，可稍后重试补齐。`
+      : "3 个风格方案已生成完成，请选择最接近客户预期的一版。",
+  });
+}
+
+async function requestImageVariant(payload, style, index, imageFile, apiKey) {
+  const variantPayload = { ...payload, style };
+  const prompt = buildRenovationPrompt(variantPayload, index);
   const formData = new FormData();
   formData.append("model", imageModel);
   formData.append("prompt", prompt);
@@ -110,37 +139,42 @@ async function handleRender(request, response) {
   try {
     const upstream = await fetch(`${apiBaseUrl}/images/edits`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
+      headers: { Authorization: `Bearer ${apiKey}` },
       body: formData,
       signal: controller.signal,
     });
-
     const data = await upstream.json().catch(() => ({}));
-    if (!upstream.ok) {
-      const message = data?.error?.message || "上游图像接口返回失败。";
-      sendJson(response, upstream.status, { error: { message } });
-      return;
-    }
+    if (!upstream.ok) throw new Error(data?.error?.message || `${styleLabelFor(style)}方案生成失败。`);
 
     const firstImage = data?.data?.[0] || {};
-    sendJson(response, 200, {
-      imageUrl: firstImage.url,
-      b64: firstImage.b64_json,
-      prompt,
-      ...designMeta,
-      note: "生成完成。建议保留原平面图，再用同一参数多生成几版做风格比较。",
-    });
+    if (!firstImage.url && !firstImage.b64_json) throw new Error(`${styleLabelFor(style)}方案没有返回图片。`);
+    return buildVariantResponse(variantPayload, style, index, prompt, firstImage);
   } catch (error) {
-    const message =
-      error.name === "AbortError"
-        ? "图像生成超时，请稍后重试或把 IMAGE_REQUEST_TIMEOUT_MS 调大。"
-        : error.message || "图像生成失败。";
-    sendJson(response, 502, { error: { message } });
+    if (error.name === "AbortError") throw new Error(`${styleLabelFor(style)}方案生成超时。`);
+    throw error;
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function buildVariantResponse(payload, style, index, prompt, image = {}) {
+  return {
+    id: `variant-${index + 1}`,
+    style,
+    styleLabel: styleLabelFor(style),
+    concept: styleConceptFor(style),
+    imageUrl: image.url,
+    b64: image.b64_json,
+    prompt,
+    designBasis: buildDesignMeta(payload).designBasis,
+  };
+}
+
+function buildMockVariant(payload, style, index) {
+  const variantPayload = { ...payload, style };
+  return buildVariantResponse(variantPayload, style, index, buildRenovationPrompt(variantPayload, index), {
+    b64_json: mockPreviewImage(index),
+  });
 }
 
 function validatePayload(payload) {
@@ -166,13 +200,14 @@ function sanitizeFileName(fileName) {
   return safeName || "floor-plan.png";
 }
 
-function buildRenovationPrompt(payload) {
+function buildRenovationPrompt(payload, variantIndex = 0) {
   const priorities = Array.isArray(payload.priorities) ? payload.priorities.join(", ") : "storage, lighting";
   const needs = payload.needs ? `User needs: ${payload.needs}.` : "User needs: practical family living.";
   const keepItems = payload.keepItems ? `Elements to preserve: ${payload.keepItems}.` : "Preserve structural constraints and useful existing furniture when visible.";
   const homeArea = payload.homeArea ? `Home size or layout note: ${payload.homeArea}.` : "Infer the layout scale from the uploaded image.";
   return [
     "Create a realistic interior renovation concept render from the uploaded floor plan or room photo.",
+    `This is comparison option ${variantIndex + 1} of 3. Keep the viewpoint, room boundaries, doors, windows, and scale consistent across options so the styles can be compared fairly.`,
     "First infer the layout logic from the image: walls, doors, windows, circulation, room proportions, lighting direction, and visible constraints.",
     `Input type: ${payload.sourceType || "floor plan"}.`,
     `Room scope: ${payload.roomType || "whole home"}.`,
@@ -187,6 +222,17 @@ function buildRenovationPrompt(payload) {
     "The result should look like a polished residential design visualization, not a technical blueprint.",
     "Avoid impossible structural changes and avoid adding text labels or watermarks.",
   ].join(" ");
+}
+
+function chooseVariantStyles(selectedStyle) {
+  const combinations = {
+    "modern warm minimalism": ["modern warm minimalism", "french cream", "new chinese"],
+    "japanese wabi-sabi": ["japanese wabi-sabi", "modern warm minimalism", "new chinese"],
+    "french cream": ["french cream", "modern warm minimalism", "japanese wabi-sabi"],
+    "new chinese": ["new chinese", "modern warm minimalism", "japanese wabi-sabi"],
+    "industrial loft": ["industrial loft", "modern warm minimalism", "new chinese"],
+  };
+  return combinations[selectedStyle] || combinations["modern warm minimalism"];
 }
 
 function buildDesignMeta(payload) {
@@ -208,7 +254,7 @@ function buildDesignMeta(payload) {
     shoppingList: shoppingListFor(payload),
     nextSteps: [
       "补充房屋尺寸、层高、门窗位置后，可以把效果图升级成更可信的平面布置方案。",
-      "从同一张图生成 3 个风格变体，用于对比预算、采光和收纳取舍。",
+      "比较当前 3 个风格方案，记录客户对色彩、材质、采光和收纳的具体偏好。",
       "把满意方案拆成家具清单，再对接沙发、柜体、灯具、窗帘和地毯商品。",
     ],
   };
@@ -248,6 +294,17 @@ function styleLabelFor(style) {
   return labels[style] || "现代暖调极简";
 }
 
+function styleConceptFor(style) {
+  const concepts = {
+    "modern warm minimalism": "温暖木色、简洁线条、耐看实用",
+    "japanese wabi-sabi": "自然肌理、低饱和色、安静松弛",
+    "french cream": "柔和奶油色、精致线条、明亮浪漫",
+    "new chinese": "东方比例、现代木作、克制雅致",
+    "industrial loft": "深色金属、原始材质、利落个性",
+  };
+  return concepts[style] || concepts["modern warm minimalism"];
+}
+
 function budgetLabelFor(budget) {
   const labels = {
     practical: "实用经济预算",
@@ -267,7 +324,8 @@ function priorityLabel(priority) {
   return labels[priority] || priority;
 }
 
-function mockPreviewImage() {
+function mockPreviewImage(index = 0) {
+  void index;
   return "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAp0lEQVR4nO3ZsQ2AMAwFQfv/p7sJkJQKjIixdCrwSKnznCQ9fN91n+8AoJ8YQABBAAEEEEAAAQQQQAABBBBAAAEEEEAAAQQQQAABBBBAwHcBQ0NDn+8k5ZyZz16UZXg1eM2x9ys0bP5hFwEEEEAAAQQQQAABBBBAAAEEEEAAAQQQQAABBBBAAAEEEEAAAc4FAAA5fZkxL1aBAAAAAElFTkSuQmCC";
 }
 
