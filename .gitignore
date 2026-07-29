@@ -2,4 +2,7 @@ node_modules/
 dist/
 .vite/
 *.log
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
 software-screenshot.png
