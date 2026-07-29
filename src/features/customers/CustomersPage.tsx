@@ -23,15 +23,20 @@ const stages: CustomerStage[] = [
   '方案调整', '已定金', '生产交付', '已成交', '已流失',
 ]
 
-type StoredState = { customers: Customer[]; followUps: FollowUp[] }
+export type CustomerWorkspaceState = { customers: Customer[]; followUps: FollowUp[] }
+export interface CustomersPageProps {
+  customers?: Customer[]
+  followUps?: FollowUp[]
+  onStateChange?: (state: CustomerWorkspaceState) => void
+}
 type Channel = FollowUp['channel']
 
-function readState(): StoredState {
+function readState(): CustomerWorkspaceState {
   if (typeof window === 'undefined') return { customers: seedCustomers, followUps: seedFollowUps }
   try {
     const saved = window.localStorage.getItem(STORAGE_KEY)
     if (saved) {
-      const parsed = JSON.parse(saved) as StoredState
+      const parsed = JSON.parse(saved) as CustomerWorkspaceState
       if (Array.isArray(parsed.customers) && Array.isArray(parsed.followUps)) return parsed
     }
   } catch {
@@ -60,8 +65,10 @@ function isOverdue(value?: string) {
   return Boolean(value && new Date(value).getTime() < Date.now())
 }
 
-export function CustomersPage() {
-  const [state, setState] = useState<StoredState>(readState)
+export function CustomersPage({ customers, followUps, onStateChange }: CustomersPageProps = {}) {
+  const [localState, setLocalState] = useState<CustomerWorkspaceState>(readState)
+  const controlled = customers !== undefined && followUps !== undefined && onStateChange !== undefined
+  const state = controlled ? { customers, followUps } : localState
   const [selectedId, setSelectedId] = useState(seedCustomers[0]?.id ?? '')
   const [query, setQuery] = useState('')
   const [stageFilter, setStageFilter] = useState<CustomerStage | '全部'>('全部')
@@ -70,8 +77,13 @@ export function CustomersPage() {
   const [formOpen, setFormOpen] = useState(false)
 
   useEffect(() => {
-    try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state)) } catch { /* no-op */ }
-  }, [state])
+    if (!controlled) try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state)) } catch { /* no-op */ }
+  }, [controlled, state])
+
+  function commit(updater: (current: CustomerWorkspaceState) => CustomerWorkspaceState) {
+    if (controlled) onStateChange(updater(state))
+    else setLocalState(updater)
+  }
 
   const owners = useMemo(() => [...new Set(state.customers.map((item) => item.salesperson))], [state.customers])
   const filtered = useMemo(() => state.customers.filter((customer) => {
@@ -92,7 +104,7 @@ export function CustomersPage() {
     .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()), [selectedId, state.followUps])
 
   function updateStage(stage: CustomerStage) {
-    setState((current) => ({
+    commit((current) => ({
       ...current,
       customers: current.customers.map((customer) => customer.id === selectedId ? { ...customer, stage } : customer),
     }))
@@ -106,7 +118,7 @@ export function CustomersPage() {
       customerId: selected.id,
       salesperson: selected.salesperson,
     }
-    setState((current) => ({
+    commit((current) => ({
       followUps: [record, ...current.followUps],
       customers: current.customers.map((customer) => customer.id === selected.id ? {
         ...customer,

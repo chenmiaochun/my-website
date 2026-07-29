@@ -1,16 +1,24 @@
-import { BarChart3, Bell, Bot, ChevronDown, ContactRound, Search, Settings } from 'lucide-react'
+import { BarChart3, Bell, Bot, ChartNoAxesCombined, ChevronDown, ClipboardList, ContactRound, Search, Settings, UserPlus } from 'lucide-react'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import { AIQualityPage } from './features/ai'
 import { CustomersPage } from './features/customers'
 import { ManagerDashboard } from './features/dashboard'
+import { SalesInsightsPage } from './features/insights'
+import { LeadsPage } from './features/leads'
+import { TaskCenterPage } from './features/tasks'
+import { SalesDataProvider, useSalesData } from './store/SalesDataContext'
 
 const navigation = [
   { to: '/dashboard', label: '经营分析', icon: BarChart3 },
   { to: '/customers', label: '客户跟进', icon: ContactRound },
+  { to: '/tasks', label: '任务中心', icon: ClipboardList },
+  { to: '/leads', label: '线索数据', icon: UserPlus },
   { to: '/quality', label: 'AI 质检', icon: Bot },
+  { to: '/insights', label: '深度洞察', icon: ChartNoAxesCombined },
 ]
 
 function AppShell() {
+  const sales = useSalesData()
   return (
     <div className="app-shell">
       <aside className="app-sidebar">
@@ -36,9 +44,12 @@ function AppShell() {
         </header>
         <div className="app-content">
           <Routes>
-            <Route path="/dashboard" element={<ManagerDashboard />} />
-            <Route path="/customers" element={<CustomersPage />} />
-            <Route path="/quality" element={<AIQualityPage />} />
+            <Route path="/dashboard" element={<ManagerDashboard customers={sales.customers} followUps={sales.followUps} />} />
+            <Route path="/customers" element={<CustomersPage customers={sales.customers} followUps={sales.followUps} onStateChange={sales.replaceState} />} />
+            <Route path="/tasks" element={<TaskCenterPage customers={sales.customers} followUps={sales.followUps} onCompleteTask={sales.addFollowUp} />} />
+            <Route path="/leads" element={<LeadsPage customers={sales.customers} onAddCustomers={sales.addCustomers} />} />
+            <Route path="/quality" element={<AIQualityPage customers={sales.customers} followUps={sales.followUps} />} />
+            <Route path="/insights" element={<SalesInsightsPage customers={sales.customers} followUps={sales.followUps} />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </div>
@@ -55,4 +66,4 @@ function AppShell() {
   )
 }
 
-export function App() { return <AppShell /> }
+export function App() { return <SalesDataProvider><AppShell /></SalesDataProvider> }

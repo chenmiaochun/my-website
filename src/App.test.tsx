@@ -22,4 +22,13 @@ describe('App routes', () => {
     renderAt('/quality')
     expect(screen.getByRole('heading', { name: '客户跟进质量与成交机会' })).toBeTruthy()
   })
+
+  it.each([
+    ['/tasks', '跟进任务中心'],
+    ['/leads', '线索数据中心'],
+    ['/insights', '从数据找到下一步增长'],
+  ])('renders the phase two route %s', (path, heading) => {
+    renderAt(path)
+    expect(screen.getByRole('heading', { name: heading })).toBeTruthy()
+  })
 })
