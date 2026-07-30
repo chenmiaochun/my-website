@@ -31,4 +31,14 @@ describe('App routes', () => {
     renderAt(path)
     expect(screen.getByRole('heading', { name: heading })).toBeTruthy()
   })
+
+  it.each([
+    ['/conversation', '把客户原话变成可执行跟进'],
+    ['/sop', '家具销售 SOP'],
+    ['/coaching', '让每次复盘都有数据依据'],
+    ['/more', '全部功能'],
+  ])('renders the phase three route %s', (path, heading) => {
+    renderAt(path)
+    expect(screen.getByRole('heading', { name: heading })).toBeTruthy()
+  })
 })
