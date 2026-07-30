@@ -1,0 +1,16 @@
+import type { TeamRole } from './access'
+
+export interface TeamMember {
+  id: string
+  name: string
+  role: TeamRole
+  phone?: string
+  active: boolean
+}
+
+export const defaultTeamMembers: TeamMember[] = [
+  { id: 'member-manager', name: '陈店长', role: 'manager', phone: '138 0000 1001', active: true },
+  { id: 'member-sales-1', name: '刘先生', role: 'sales', phone: '138 0000 1002', active: true },
+  { id: 'member-sales-2', name: '王顾问', role: 'sales', phone: '138 0000 1003', active: true },
+  { id: 'member-designer', name: '林设计师', role: 'designer', phone: '138 0000 1004', active: true },
+]
