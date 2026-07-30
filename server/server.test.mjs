@@ -25,6 +25,17 @@ test('members and integrations round trip', async () => {
   assert.deepEqual((await put('/api/members', { members: [{ id: 'u1', name: 'Li' }] })).body.members, [{ id: 'u1', name: 'Li' }])
   assert.deepEqual((await put('/api/integrations', { integrations: { crm: { enabled: true } } })).body.integrations, { crm: { enabled: true } })
 })
+
+test('integration secrets are stored but never returned', async () => {
+  const saved = await put('/api/integrations', { integrations: { wechat: { corpId: 'corp', secret: 'private-value' } } })
+  assert.deepEqual(saved.body.integrations, { wechat: { corpId: 'corp', secretConfigured: true } })
+  const fetched = await json('/api/integrations')
+  assert.equal(JSON.stringify(fetched.body).includes('private-value'), false)
+  const backup = await json('/api/backup')
+  assert.equal(JSON.stringify(backup.body).includes('private-value'), false)
+  const updated = await put('/api/integrations', { integrations: { wechat: { corpId: 'corp-2', secretConfigured: true } } })
+  assert.equal(updated.body.integrations.wechat.secretConfigured, true)
+})
 test('backup can restore prior data', async () => {
   const backup = (await json('/api/backup')).body
   await put('/api/state', { changed: true })

@@ -1,4 +1,5 @@
-import { BarChart3, Bell, Bot, ChartNoAxesCombined, ChevronDown, ClipboardList, ContactRound, GraduationCap, LayoutGrid, ListChecks, MessageSquareText, Search, Settings, UserPlus } from 'lucide-react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { BarChart3, Bell, Bot, ChartNoAxesCombined, ChevronDown, ClipboardList, ContactRound, Database, GraduationCap, LayoutGrid, ListChecks, MessageSquareText, Search, Settings, UserCog, UserPlus } from 'lucide-react'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import { AIQualityPage } from './features/ai'
 import { CustomersPage } from './features/customers'
@@ -9,70 +10,105 @@ import { SalesInsightsPage } from './features/insights'
 import { LeadsPage } from './features/leads'
 import { TaskCenterPage } from './features/tasks'
 import { SalesSopPage } from './features/sop'
+import { DataAdminPage, type ConnectionStatus } from './features/data-admin'
+import { RoleProvider, ROLE_LABELS, TeamAccessPage, canAccessCustomer, defaultTeamMembers, useRoleAccess, type AccessPermission, type TeamMember } from './features/team'
 import { SalesDataProvider, useSalesData } from './store/SalesDataContext'
+import { salesApi } from './api/salesApi'
 
 const navigation = [
-  { to: '/dashboard', label: '经营分析', icon: BarChart3 },
-  { to: '/customers', label: '客户跟进', icon: ContactRound },
-  { to: '/tasks', label: '任务中心', icon: ClipboardList },
-  { to: '/leads', label: '线索数据', icon: UserPlus },
-  { to: '/quality', label: 'AI 质检', icon: Bot },
-  { to: '/conversation', label: '沟通分析', icon: MessageSquareText },
-  { to: '/sop', label: '销售 SOP', icon: ListChecks },
-  { to: '/coaching', label: '辅导中心', icon: GraduationCap },
-  { to: '/insights', label: '深度洞察', icon: ChartNoAxesCombined },
+  { to: '/dashboard', label: '经营分析', icon: BarChart3, permission: 'store.analytics' },
+  { to: '/customers', label: '客户跟进', icon: ContactRound, permission: 'customers.own' },
+  { to: '/tasks', label: '任务中心', icon: ClipboardList, permission: 'tasks.own' },
+  { to: '/leads', label: '线索数据', icon: UserPlus, permission: 'customers.own' },
+  { to: '/quality', label: 'AI 质检', icon: Bot, permission: 'store.analytics' },
+  { to: '/conversation', label: '沟通分析', icon: MessageSquareText, permission: 'conversation.analysis' },
+  { to: '/sop', label: '销售 SOP', icon: ListChecks, permission: 'sop' },
+  { to: '/coaching', label: '辅导中心', icon: GraduationCap, permission: 'coaching' },
+  { to: '/insights', label: '深度洞察', icon: ChartNoAxesCombined, permission: 'store.analytics' },
+  { to: '/team', label: '团队权限', icon: UserCog, permission: 'members.manage' },
+  { to: '/data-admin', label: '数据管理', icon: Database, permission: 'data.manage' },
 ]
 
-const mobileNavigation = [navigation[0], navigation[1], navigation[2], navigation[5]]
+type NavItem = typeof navigation[number]
+const canUseItem = (can: (permission: AccessPermission) => boolean, item: NavItem) => item.to === '/customers' ? can('customers.own') || can('customers.design') : can(item.permission as AccessPermission)
 
-function MorePage() {
-  return <main className="more-page"><header><p>尚品居销售工作台</p><h1>全部功能</h1></header><div className="module-grid">{navigation.map(({ to, label, icon: Icon }) => <NavLink key={to} to={to}><Icon size={23} /><span>{label}</span></NavLink>)}</div></main>
+function MorePage({ items }: { items: NavItem[] }) {
+  return <main className="more-page"><header><p>尚品居销售工作台</p><h1>全部功能</h1></header><div className="module-grid">{items.map(({ to, label, icon: Icon }) => <NavLink key={to} to={to}><Icon size={23} /><span>{label}</span></NavLink>)}</div></main>
 }
 
-function AppShell() {
+function Allowed({ permission, children }: { permission: AccessPermission; children: ReactNode }) {
+  const access = useRoleAccess()
+  return access.can(permission) ? children : <Navigate to="/more" replace />
+}
+
+const seededMembers: TeamMember[] = [
+  defaultTeamMembers[0],
+  { id: 'sales-linxiao', name: '林晓', role: 'sales', active: true },
+  { id: 'sales-zhouran', name: '周然', role: 'sales', active: true },
+  { id: 'sales-hejing', name: '何静', role: 'sales', active: true },
+  defaultTeamMembers[3],
+]
+const ACTIVE_MEMBER_KEY = 'sales-crm-active-member-v1'
+
+function AppShell({ members, activeMember, onMembersChange, onActiveMemberChange }: { members: TeamMember[]; activeMember: TeamMember; onMembersChange: (items: TeamMember[]) => void; onActiveMemberChange: (member: TeamMember) => void }) {
   const sales = useSalesData()
+  const access = useRoleAccess()
+  const visibleNavigation = navigation.filter((item) => canUseItem(access.can, item))
+  const visibleCustomers = useMemo(() => sales.customers.filter((customer) => canAccessCustomer(activeMember, customer)), [activeMember, sales.customers])
+  const visibleIds = useMemo(() => new Set(visibleCustomers.map((item) => item.id)), [visibleCustomers])
+  const visibleFollowUps = sales.followUps.filter((item) => visibleIds.has(item.customerId))
+  const mergeVisibleState = (next: { customers: typeof sales.customers; followUps: typeof sales.followUps }) => {
+    const updates = new Map(next.customers.map((item) => [item.id, item]))
+    sales.replaceState({ customers: sales.customers.map((item) => updates.get(item.id) ?? item), followUps: [...next.followUps, ...sales.followUps.filter((item) => !visibleIds.has(item.customerId))] })
+  }
+  const wechat = sales.integrationSettings.wechat ?? {}
+  const connectionStatus: ConnectionStatus = wechat.status === 'connected' ? 'connected' : wechat.corpId && wechat.agentId ? 'pending' : 'unconfigured'
+  const mobileItems = [navigation[0], navigation[1], navigation[2], navigation[5]].filter((item) => visibleNavigation.includes(item))
   return (
     <div className="app-shell">
       <aside className="app-sidebar">
         <div className="brand"><span className="brand-mark">尚</span><div><strong>尚品居</strong><small>销售工作台</small></div></div>
         <nav aria-label="主导航">
-          {navigation.map(({ to, label, icon: Icon }) => (
+          {visibleNavigation.map(({ to, label, icon: Icon }) => (
             <NavLink key={to} to={to} className={({ isActive }) => isActive ? 'is-active' : ''}>
               <Icon size={19} /><span>{label}</span>
             </NavLink>
           ))}
         </nav>
         <div className="sidebar-note"><span>今日进度</span><strong>3 / 5</strong><div><i /></div><small>还有 2 位客户待跟进</small></div>
-        <button className="account" type="button"><span>林</span><div><strong>林晓</strong><small>销售顾问</small></div><ChevronDown size={15} /></button>
+        <div className="account"><span>{activeMember.name.slice(0, 1)}</span><div><strong>{activeMember.name}</strong><small>{ROLE_LABELS[activeMember.role]} · {sales.serverStatus === 'connected' ? '已同步' : '离线模式'}</small></div><ChevronDown size={15} /></div>
       </aside>
 
       <section className="app-main">
         <header className="app-topbar">
           <div className="topbar-search"><Search size={17} /><span>搜索客户、手机号或产品</span></div>
           <div className="topbar-actions">
+            <select className="role-quick-switch" aria-label="切换当前身份" value={activeMember.id} onChange={(event) => { const member = members.find((item) => item.id === event.target.value); if (member) onActiveMemberChange(member) }}>{members.filter((item) => item.active).map((member) => <option key={member.id} value={member.id}>{member.name} · {ROLE_LABELS[member.role]}</option>)}</select>
             <button type="button" title="消息提醒"><Bell size={19} /><i>3</i></button>
             <button type="button" title="系统设置"><Settings size={19} /></button>
           </div>
         </header>
         <div className="app-content">
           <Routes>
-            <Route path="/dashboard" element={<ManagerDashboard customers={sales.customers} followUps={sales.followUps} />} />
-            <Route path="/customers" element={<CustomersPage customers={sales.customers} followUps={sales.followUps} onStateChange={sales.replaceState} />} />
-            <Route path="/tasks" element={<TaskCenterPage customers={sales.customers} followUps={sales.followUps} onCompleteTask={sales.addFollowUp} />} />
-            <Route path="/leads" element={<LeadsPage customers={sales.customers} onAddCustomers={sales.addCustomers} />} />
-            <Route path="/quality" element={<AIQualityPage customers={sales.customers} followUps={sales.followUps} />} />
-            <Route path="/conversation" element={<ConversationAnalyzerPage customers={sales.customers} onApplyAnalysis={(id, patch, followUp) => { sales.updateCustomer(id, patch); sales.addFollowUp(followUp) }} />} />
-            <Route path="/sop" element={<SalesSopPage customers={sales.customers} followUps={sales.followUps} />} />
-            <Route path="/coaching" element={<CoachingCenterPage customers={sales.customers} followUps={sales.followUps} />} />
-            <Route path="/insights" element={<SalesInsightsPage customers={sales.customers} followUps={sales.followUps} />} />
-            <Route path="/more" element={<MorePage />} />
+            <Route path="/dashboard" element={<Allowed permission="store.analytics"><ManagerDashboard customers={sales.customers} followUps={sales.followUps} /></Allowed>} />
+            <Route path="/customers" element={<CustomersPage customers={visibleCustomers} followUps={visibleFollowUps} onStateChange={mergeVisibleState} />} />
+            <Route path="/tasks" element={<Allowed permission="tasks.own"><TaskCenterPage customers={visibleCustomers} followUps={visibleFollowUps} onCompleteTask={sales.addFollowUp} /></Allowed>} />
+            <Route path="/leads" element={<Allowed permission="customers.own"><LeadsPage customers={visibleCustomers} onAddCustomers={sales.addCustomers} /></Allowed>} />
+            <Route path="/quality" element={<Allowed permission="store.analytics"><AIQualityPage customers={sales.customers} followUps={sales.followUps} /></Allowed>} />
+            <Route path="/conversation" element={<Allowed permission="conversation.analysis"><ConversationAnalyzerPage customers={visibleCustomers} onApplyAnalysis={(id, patch, followUp) => { sales.updateCustomer(id, patch); sales.addFollowUp(followUp) }} /></Allowed>} />
+            <Route path="/sop" element={<Allowed permission="sop"><SalesSopPage customers={visibleCustomers} followUps={visibleFollowUps} /></Allowed>} />
+            <Route path="/coaching" element={<Allowed permission="coaching"><CoachingCenterPage customers={sales.customers} followUps={sales.followUps} /></Allowed>} />
+            <Route path="/insights" element={<Allowed permission="store.analytics"><SalesInsightsPage customers={sales.customers} followUps={sales.followUps} /></Allowed>} />
+            <Route path="/team" element={<Allowed permission="members.manage"><TeamAccessPage members={members} onMembersChange={onMembersChange} onActiveMemberChange={onActiveMemberChange} /></Allowed>} />
+            <Route path="/data-admin" element={<Allowed permission="data.manage"><DataAdminPage customers={sales.customers} followUps={sales.followUps} auditEvents={sales.auditEvents.map((item) => ({ id: String(item.id), action: `${item.action} ${item.resource}`, at: item.createdAt, detail: JSON.stringify(item.details) }))} connectionStatus={connectionStatus} onRestoreBackup={(backup) => sales.replaceState({ customers: backup.customers, followUps: backup.followUps })} integrationSettings={{ corpId: String(wechat.corpId ?? ''), agentId: String(wechat.agentId ?? ''), secretConfigured: Boolean(wechat.secretConfigured || wechat.secret) }} onSaveIntegration={async (settings) => sales.saveIntegrations({ ...sales.integrationSettings, wechat: { ...wechat, corpId: settings.corpId, agentId: settings.agentId, ...(settings.secret ? { secret: settings.secret } : {}), secretConfigured: Boolean(settings.secret || wechat.secretConfigured || wechat.secret), status: 'pending' } })} /></Allowed>} />
+            <Route path="/more" element={<MorePage items={visibleNavigation} />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </div>
       </section>
 
       <nav className="mobile-nav" aria-label="移动端导航">
-        {mobileNavigation.map(({ to, label, icon: Icon }) => (
+        {mobileItems.map(({ to, label, icon: Icon }) => (
           <NavLink key={to} to={to} className={({ isActive }) => isActive ? 'is-active' : ''}>
             <Icon size={20} /><span>{label}</span>
           </NavLink>
@@ -83,4 +119,23 @@ function AppShell() {
   )
 }
 
-export function App() { return <SalesDataProvider><AppShell /></SalesDataProvider> }
+export function App() {
+  const [members, setMembers] = useState<TeamMember[]>(seededMembers)
+  const [activeMember, setActiveMember] = useState<TeamMember>(() => {
+    const saved = typeof window === 'undefined' ? null : window.localStorage.getItem(ACTIVE_MEMBER_KEY)
+    return seededMembers.find((item) => item.id === saved && item.active) ?? seededMembers[0]
+  })
+  useEffect(() => {
+    void salesApi.getMembers<TeamMember>().then(async ({ members: remote }) => {
+      if (remote.length) {
+        setMembers(remote)
+        const saved = window.localStorage.getItem(ACTIVE_MEMBER_KEY)
+        setActiveMember(remote.find((item) => item.id === saved && item.active) ?? remote.find((item) => item.active && item.role === 'manager') ?? remote.find((item) => item.active) ?? remote[0])
+      }
+      else await salesApi.putMembers(seededMembers)
+    }).catch(() => undefined)
+  }, [])
+  const updateMembers = (items: TeamMember[]) => { setMembers(items); void salesApi.putMembers(items).catch(() => undefined) }
+  const updateActiveMember = (member: TeamMember) => { setActiveMember(member); window.localStorage.setItem(ACTIVE_MEMBER_KEY, member.id) }
+  return <SalesDataProvider><RoleProvider identity={activeMember}><AppShell members={members} activeMember={activeMember} onMembersChange={updateMembers} onActiveMemberChange={updateActiveMember} /></RoleProvider></SalesDataProvider>
+}

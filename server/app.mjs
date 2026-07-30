@@ -26,6 +26,24 @@ function validateIntegrations(value) {
   return settings
 }
 
+function publicIntegrations(settings) {
+  return Object.fromEntries(Object.entries(settings).map(([name, value]) => {
+    if (!isObject(value) || !Object.prototype.hasOwnProperty.call(value, 'secret')) return [name, value]
+    const { secret: _secret, ...publicValue } = value
+    return [name, { ...publicValue, secretConfigured: Boolean(_secret) }]
+  }))
+}
+
+function mergeIntegrationSecrets(current, incoming) {
+  return Object.fromEntries(Object.entries(incoming).map(([name, value]) => {
+    const previous = current[name]
+    if (isObject(value) && isObject(previous) && !Object.prototype.hasOwnProperty.call(value, 'secret') && Object.prototype.hasOwnProperty.call(previous, 'secret')) {
+      return [name, { ...value, secret: previous.secret }]
+    }
+    return [name, value]
+  }))
+}
+
 function validateBackup(value) {
   if (!isObject(value) || value.version !== 1 || !isObject(value.state) || !isObject(value.integrations)) throw new ApiError(400, 'VALIDATION_ERROR', 'invalid version 1 backup')
   return { version: 1, state: value.state, members: validateMembers(value.members), integrations: validateIntegrations(value.integrations) }
@@ -60,12 +78,12 @@ export function createApiServer({ database, maxBodyBytes = 1_048_576, corsOrigin
         if (!Number.isInteger(limit) || limit < 1 || limit > 200 || !Number.isInteger(offset) || offset < 0) throw new ApiError(400, 'VALIDATION_ERROR', 'limit must be 1..200 and offset must be non-negative')
         return send(200, database.getAudit(limit, offset))
       }
-      if (req.method === 'GET' && url.pathname === '/api/backup') return send(200, database.backup(), { 'content-disposition': 'attachment; filename="sales-backup.json"' })
+      if (req.method === 'GET' && url.pathname === '/api/backup') { const backup = database.backup(); return send(200, { ...backup, integrations: publicIntegrations(backup.integrations) }, { 'content-disposition': 'attachment; filename="sales-backup.json"' }) }
       if (req.method === 'POST' && url.pathname === '/api/restore') return send(200, database.restore(validateBackup(await readJson(req, maxBodyBytes))))
       if (req.method === 'GET' && url.pathname === '/api/members') return send(200, { members: database.getMembers() })
       if (req.method === 'PUT' && url.pathname === '/api/members') return send(200, { members: database.setMembers(validateMembers(await readJson(req, maxBodyBytes))) })
-      if (req.method === 'GET' && url.pathname === '/api/integrations') return send(200, { integrations: database.getIntegrations() })
-      if (req.method === 'PUT' && url.pathname === '/api/integrations') return send(200, { integrations: database.setIntegrations(validateIntegrations(await readJson(req, maxBodyBytes))) })
+      if (req.method === 'GET' && url.pathname === '/api/integrations') return send(200, { integrations: publicIntegrations(database.getIntegrations()) })
+      if (req.method === 'PUT' && url.pathname === '/api/integrations') { const incoming = validateIntegrations(await readJson(req, maxBodyBytes)); const saved = database.setIntegrations(mergeIntegrationSecrets(database.getIntegrations(), incoming)); return send(200, { integrations: publicIntegrations(saved) }) }
       throw new ApiError(404, 'NOT_FOUND', 'API route not found')
     } catch (error) {
       const known = error instanceof ApiError

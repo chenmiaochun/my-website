@@ -41,4 +41,12 @@ describe('App routes', () => {
     renderAt(path)
     expect(screen.getByRole('heading', { name: heading })).toBeTruthy()
   })
+
+  it.each([
+    ['/team', '成员角色管理'],
+    ['/data-admin', '数据管理与接入中心'],
+  ])('renders the phase four route %s', (path, heading) => {
+    renderAt(path)
+    expect(screen.getByRole('heading', { name: heading })).toBeTruthy()
+  })
 })
