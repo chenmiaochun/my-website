@@ -1,0 +1,33 @@
+# 销售软件
+
+## SQLite 数据服务
+
+要求 Node.js 24（使用内置 `node:http` 和 `node:sqlite`，无额外依赖）。
+
+```powershell
+$env:SALES_DATA_DIR = 'D:\sales-data' # 可选，默认 server/data
+$env:PORT = '3001'                     # 可选
+node server/index.mjs
+```
+
+可选配置：`SALES_MAX_BODY_BYTES`（默认 1048576）和 `SALES_CORS_ORIGIN`（默认 `*`）。服务收到 `SIGINT` 或 `SIGTERM` 时会停止接受连接并关闭数据库。
+
+### API
+
+所有写请求须使用 `Content-Type: application/json`，错误格式为 `{ "error": { "code", "message" } }`。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/health` | 健康检查 |
+| GET / PUT | `/api/state` | 读取或替换应用状态对象 |
+| GET | `/api/audit?limit=50&offset=0` | 分页读取写操作审计（limit 最大 200） |
+| GET | `/api/backup` | 下载版本 1 JSON 备份 |
+| POST | `/api/restore` | 校验并恢复版本 1 JSON 备份 |
+| GET / PUT | `/api/members` | 读取或替换成员；PUT 接受数组或 `{ "members": [] }`，每项须有唯一非空字符串 `id` |
+| GET / PUT | `/api/integrations` | 读取或替换集成设置对象；PUT 可使用 `{ "integrations": {...} }` |
+
+运行服务测试：
+
+```powershell
+node --test server/*.test.mjs
+```

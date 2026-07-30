@@ -7,3 +7,7 @@ vite.config.js
 vite.config.d.ts
 artifacts/
 software-screenshot.png
+server/data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
