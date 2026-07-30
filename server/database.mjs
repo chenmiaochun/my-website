@@ -1,6 +1,22 @@
 import { DatabaseSync } from 'node:sqlite'
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 
 const parseJson = (value) => JSON.parse(value)
+const tokenDigest = token => createHash('sha256').update(token).digest('hex')
+
+function hashPassword(password) {
+  const salt = randomBytes(16)
+  const hash = scryptSync(password, salt, 64)
+  return `scrypt$${salt.toString('base64')}$${hash.toString('base64')}`
+}
+
+function verifyPassword(password, encoded) {
+  const [algorithm, saltValue, hashValue] = String(encoded).split('$')
+  if (algorithm !== 'scrypt' || !saltValue || !hashValue) return false
+  const expected = Buffer.from(hashValue, 'base64')
+  const actual = scryptSync(password, Buffer.from(saltValue, 'base64'), expected.length)
+  return expected.length === actual.length && timingSafeEqual(expected, actual)
+}
 
 export class SalesDatabase {
   constructor(filename = ':memory:') {
@@ -29,6 +45,26 @@ export class SalesDatabase {
         value TEXT NOT NULL CHECK (json_valid(value)),
         updated_at TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS auth_accounts (
+        id TEXT PRIMARY KEY,
+        username TEXT NOT NULL COLLATE NOCASE UNIQUE,
+        password_hash TEXT NOT NULL,
+        name TEXT NOT NULL,
+        role TEXT NOT NULL CHECK(role IN ('manager', 'sales', 'designer')),
+        active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)),
+        must_change_password INTEGER NOT NULL DEFAULT 0 CHECK(must_change_password IN (0, 1)),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS auth_sessions (
+        token_hash TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL REFERENCES auth_accounts(id) ON DELETE CASCADE,
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS auth_sessions_account_idx ON auth_sessions(account_id);
+      CREATE INDEX IF NOT EXISTS auth_sessions_expiry_idx ON auth_sessions(expires_at);
     `)
     this.statements = {
       getState: this.db.prepare('SELECT value, updated_at FROM app_state WHERE id = 1'),
@@ -45,6 +81,19 @@ export class SalesDatabase {
       putIntegration: this.db.prepare(`INSERT INTO integration_settings(name, value, updated_at) VALUES(?, ?, ?)
         ON CONFLICT(name) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`),
       deleteIntegrations: this.db.prepare('DELETE FROM integration_settings'),
+      countAccounts: this.db.prepare('SELECT COUNT(*) AS count FROM auth_accounts'),
+      accountByUsername: this.db.prepare('SELECT * FROM auth_accounts WHERE username = ? COLLATE NOCASE'),
+      accountById: this.db.prepare('SELECT * FROM auth_accounts WHERE id = ?'),
+      listAccounts: this.db.prepare('SELECT * FROM auth_accounts ORDER BY created_at'),
+      insertAccount: this.db.prepare('INSERT INTO auth_accounts(id, username, password_hash, name, role, active, must_change_password, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)'),
+      updateAccountStatus: this.db.prepare('UPDATE auth_accounts SET active = ?, updated_at = ? WHERE id = ?'),
+      updateAccountPassword: this.db.prepare('UPDATE auth_accounts SET password_hash = ?, must_change_password = 1, updated_at = ? WHERE id = ?'),
+      deleteAccountSessions: this.db.prepare('DELETE FROM auth_sessions WHERE account_id = ?'),
+      insertSession: this.db.prepare('INSERT INTO auth_sessions(token_hash, account_id, expires_at, created_at, last_seen_at) VALUES(?, ?, ?, ?, ?)'),
+      getSession: this.db.prepare(`SELECT s.token_hash, s.expires_at, a.* FROM auth_sessions s JOIN auth_accounts a ON a.id = s.account_id WHERE s.token_hash = ?`),
+      touchSession: this.db.prepare('UPDATE auth_sessions SET last_seen_at = ? WHERE token_hash = ?'),
+      deleteSession: this.db.prepare('DELETE FROM auth_sessions WHERE token_hash = ?'),
+      deleteExpiredSessions: this.db.prepare('DELETE FROM auth_sessions WHERE expires_at <= ?'),
     }
   }
 
@@ -80,6 +129,77 @@ export class SalesDatabase {
     const at = this.now()
     this.transaction(() => { this.statements.deleteIntegrations.run(); for (const [name, value] of Object.entries(settings)) this.statements.putIntegration.run(name, JSON.stringify(value), at); this.record('replace', 'integrations', { names: Object.keys(settings) }) })
     return this.getIntegrations()
+  }
+  publicAccount(row) {
+    return { id: row.id, username: row.username, name: row.name, role: row.role, active: Boolean(row.active), mustChangePassword: Boolean(row.must_change_password) }
+  }
+  ensureInitialAdmin({ username, password, name = '店长' }) {
+    if (Number(this.statements.countAccounts.get().count) > 0) return null
+    if (!username || !password) return null
+    if (password.length < 10) throw new Error('Initial administrator password must be at least 10 characters')
+    const at = this.now(), id = `account-${randomBytes(8).toString('hex')}`
+    this.transaction(() => {
+      this.statements.insertAccount.run(id, username.trim(), hashPassword(password), name, 'manager', 1, 1, at, at)
+      this.record('create', 'auth_account', { accountId: id, role: 'manager', initial: true })
+    })
+    return this.publicAccount(this.statements.accountById.get(id))
+  }
+  createAccount({ username, password, name, role, active = true, mustChangePassword = true }) {
+    if (!['manager', 'sales', 'designer'].includes(role)) throw new Error('Invalid account role')
+    if (!username?.trim() || !name?.trim() || String(password || '').length < 10) throw new Error('Invalid account details')
+    const at = this.now(), id = `account-${randomBytes(8).toString('hex')}`
+    this.statements.insertAccount.run(id, username.trim(), hashPassword(password), name.trim(), role, active ? 1 : 0, mustChangePassword ? 1 : 0, at, at)
+    this.record('create', 'auth_account', { accountId: id, role })
+    return this.publicAccount(this.statements.accountById.get(id))
+  }
+  listAccounts() { return this.statements.listAccounts.all().map(row => this.publicAccount(row)) }
+  setAccountActive(id, active) {
+    const at = this.now()
+    this.transaction(() => {
+      const result = this.statements.updateAccountStatus.run(active ? 1 : 0, at, id)
+      if (!result.changes) throw new Error('Account not found')
+      if (!active) this.statements.deleteAccountSessions.run(id)
+      this.record(active ? 'enable' : 'disable', 'auth_account', { accountId: id })
+    })
+    return this.publicAccount(this.statements.accountById.get(id))
+  }
+  resetAccountPassword(id, password) {
+    if (String(password || '').length < 10) throw new Error('Password must be at least 10 characters')
+    const at = this.now()
+    this.transaction(() => {
+      const result = this.statements.updateAccountPassword.run(hashPassword(password), at, id)
+      if (!result.changes) throw new Error('Account not found')
+      this.statements.deleteAccountSessions.run(id)
+      this.record('reset_password', 'auth_account', { accountId: id })
+    })
+    return true
+  }
+  authenticate(username, password) {
+    const row = this.statements.accountByUsername.get(String(username || '').trim())
+    return row && row.active && verifyPassword(String(password || ''), row.password_hash) ? this.publicAccount(row) : null
+  }
+  createSession(accountId, ttlMs) {
+    const token = randomBytes(32).toString('base64url'), at = this.now(), expiresAt = new Date(Date.now() + ttlMs).toISOString()
+    this.statements.deleteExpiredSessions.run(at)
+    this.statements.insertSession.run(tokenDigest(token), accountId, expiresAt, at, at)
+    this.record('login', 'auth_session', { accountId })
+    return { token, expiresAt }
+  }
+  getSession(token) {
+    if (!token) return null
+    const now = this.now()
+    this.statements.deleteExpiredSessions.run(now)
+    const row = this.statements.getSession.get(tokenDigest(token))
+    if (!row || !row.active || row.expires_at <= now) return null
+    this.statements.touchSession.run(now, row.token_hash)
+    return { account: this.publicAccount(row), expiresAt: row.expires_at }
+  }
+  revokeSession(token) {
+    if (!token) return false
+    const digest = tokenDigest(token), row = this.statements.getSession.get(digest)
+    const result = this.statements.deleteSession.run(digest)
+    if (result.changes) this.record('logout', 'auth_session', { accountId: row?.id })
+    return Boolean(result.changes)
   }
   backup() { return { version: 1, createdAt: this.now(), state: this.getState().value, members: this.getMembers(), integrations: this.getIntegrations() } }
   restore(data) {

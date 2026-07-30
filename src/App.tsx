@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { BarChart3, Bell, Bot, ChartNoAxesCombined, ChevronDown, ClipboardList, ContactRound, Database, GraduationCap, LayoutGrid, ListChecks, MessageSquareText, Search, Settings, UserCog, UserPlus } from 'lucide-react'
-import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
+import { useMemo, type ReactNode } from 'react'
+import { BarChart3, Bell, Bot, ChartNoAxesCombined, ChevronDown, ClipboardList, ContactRound, Database, GraduationCap, LayoutGrid, ListChecks, LogOut, MessageSquareText, Search, Settings, UserCog, UserPlus } from 'lucide-react'
+import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AIQualityPage } from './features/ai'
 import { CustomersPage } from './features/customers'
 import { ManagerDashboard } from './features/dashboard'
@@ -11,9 +11,10 @@ import { LeadsPage } from './features/leads'
 import { TaskCenterPage } from './features/tasks'
 import { SalesSopPage } from './features/sop'
 import { DataAdminPage, type ConnectionStatus } from './features/data-admin'
-import { RoleProvider, ROLE_LABELS, TeamAccessPage, canAccessCustomer, defaultTeamMembers, useRoleAccess, type AccessPermission, type TeamMember } from './features/team'
+import { RoleProvider, ROLE_LABELS, TeamAccessPage, canAccessCustomer, useRoleAccess, type AccessPermission, type TeamMember } from './features/team'
 import { SalesDataProvider, useSalesData } from './store/SalesDataContext'
-import { salesApi } from './api/salesApi'
+import { LoginPage } from './auth/LoginPage'
+import { useAuth } from './auth/AuthContext'
 
 const navigation = [
   { to: '/dashboard', label: '经营分析', icon: BarChart3, permission: 'store.analytics' },
@@ -41,17 +42,9 @@ function Allowed({ permission, children }: { permission: AccessPermission; child
   return access.can(permission) ? children : <Navigate to="/more" replace />
 }
 
-const seededMembers: TeamMember[] = [
-  defaultTeamMembers[0],
-  { id: 'sales-linxiao', name: '林晓', role: 'sales', active: true },
-  { id: 'sales-zhouran', name: '周然', role: 'sales', active: true },
-  { id: 'sales-hejing', name: '何静', role: 'sales', active: true },
-  defaultTeamMembers[3],
-]
-const ACTIVE_MEMBER_KEY = 'sales-crm-active-member-v1'
-
-function AppShell({ members, activeMember, onMembersChange, onActiveMemberChange }: { members: TeamMember[]; activeMember: TeamMember; onMembersChange: (items: TeamMember[]) => void; onActiveMemberChange: (member: TeamMember) => void }) {
+function AppShell({ activeMember }: { activeMember: TeamMember }) {
   const sales = useSalesData()
+  const auth = useAuth()
   const access = useRoleAccess()
   const visibleNavigation = navigation.filter((item) => canUseItem(access.can, item))
   const visibleCustomers = useMemo(() => sales.customers.filter((customer) => canAccessCustomer(activeMember, customer)), [activeMember, sales.customers])
@@ -83,9 +76,9 @@ function AppShell({ members, activeMember, onMembersChange, onActiveMemberChange
         <header className="app-topbar">
           <div className="topbar-search"><Search size={17} /><span>搜索客户、手机号或产品</span></div>
           <div className="topbar-actions">
-            <select className="role-quick-switch" aria-label="切换当前身份" value={activeMember.id} onChange={(event) => { const member = members.find((item) => item.id === event.target.value); if (member) onActiveMemberChange(member) }}>{members.filter((item) => item.active).map((member) => <option key={member.id} value={member.id}>{member.name} · {ROLE_LABELS[member.role]}</option>)}</select>
             <button type="button" title="消息提醒"><Bell size={19} /><i>3</i></button>
             <button type="button" title="系统设置"><Settings size={19} /></button>
+            <button type="button" title="退出登录" aria-label="退出登录" onClick={() => void auth.logout()}><LogOut size={19} /></button>
           </div>
         </header>
         <div className="app-content">
@@ -99,7 +92,7 @@ function AppShell({ members, activeMember, onMembersChange, onActiveMemberChange
             <Route path="/sop" element={<Allowed permission="sop"><SalesSopPage customers={visibleCustomers} followUps={visibleFollowUps} /></Allowed>} />
             <Route path="/coaching" element={<Allowed permission="coaching"><CoachingCenterPage customers={sales.customers} followUps={sales.followUps} /></Allowed>} />
             <Route path="/insights" element={<Allowed permission="store.analytics"><SalesInsightsPage customers={sales.customers} followUps={sales.followUps} /></Allowed>} />
-            <Route path="/team" element={<Allowed permission="members.manage"><TeamAccessPage members={members} onMembersChange={onMembersChange} onActiveMemberChange={onActiveMemberChange} /></Allowed>} />
+            <Route path="/team" element={<Allowed permission="members.manage"><TeamAccessPage /></Allowed>} />
             <Route path="/data-admin" element={<Allowed permission="data.manage"><DataAdminPage customers={sales.customers} followUps={sales.followUps} auditEvents={sales.auditEvents.map((item) => ({ id: String(item.id), action: `${item.action} ${item.resource}`, at: item.createdAt, detail: JSON.stringify(item.details) }))} connectionStatus={connectionStatus} onRestoreBackup={(backup) => sales.replaceState({ customers: backup.customers, followUps: backup.followUps })} integrationSettings={{ corpId: String(wechat.corpId ?? ''), agentId: String(wechat.agentId ?? ''), secretConfigured: Boolean(wechat.secretConfigured || wechat.secret) }} onSaveIntegration={async (settings) => sales.saveIntegrations({ ...sales.integrationSettings, wechat: { ...wechat, corpId: settings.corpId, agentId: settings.agentId, ...(settings.secret ? { secret: settings.secret } : {}), secretConfigured: Boolean(settings.secret || wechat.secretConfigured || wechat.secret), status: 'pending' } })} /></Allowed>} />
             <Route path="/more" element={<MorePage items={visibleNavigation} />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
@@ -120,22 +113,10 @@ function AppShell({ members, activeMember, onMembersChange, onActiveMemberChange
 }
 
 export function App() {
-  const [members, setMembers] = useState<TeamMember[]>(seededMembers)
-  const [activeMember, setActiveMember] = useState<TeamMember>(() => {
-    const saved = typeof window === 'undefined' ? null : window.localStorage.getItem(ACTIVE_MEMBER_KEY)
-    return seededMembers.find((item) => item.id === saved && item.active) ?? seededMembers[0]
-  })
-  useEffect(() => {
-    void salesApi.getMembers<TeamMember>().then(async ({ members: remote }) => {
-      if (remote.length) {
-        setMembers(remote)
-        const saved = window.localStorage.getItem(ACTIVE_MEMBER_KEY)
-        setActiveMember(remote.find((item) => item.id === saved && item.active) ?? remote.find((item) => item.active && item.role === 'manager') ?? remote.find((item) => item.active) ?? remote[0])
-      }
-      else await salesApi.putMembers(seededMembers)
-    }).catch(() => undefined)
-  }, [])
-  const updateMembers = (items: TeamMember[]) => { setMembers(items); void salesApi.putMembers(items).catch(() => undefined) }
-  const updateActiveMember = (member: TeamMember) => { setActiveMember(member); window.localStorage.setItem(ACTIVE_MEMBER_KEY, member.id) }
-  return <SalesDataProvider><RoleProvider identity={activeMember}><AppShell members={members} activeMember={activeMember} onMembersChange={updateMembers} onActiveMemberChange={updateActiveMember} /></RoleProvider></SalesDataProvider>
+  const auth = useAuth()
+  const location = useLocation()
+  if (auth.status === 'loading') return <main className="auth-loading">正在验证登录状态...</main>
+  if (auth.status === 'anonymous') return <Routes><Route path="/login" element={<LoginPage />} /><Route path="*" element={<Navigate to="/login" state={{ from: location.pathname }} replace />} /></Routes>
+  const activeMember = auth.user!
+  return <SalesDataProvider><RoleProvider identity={activeMember}><Routes><Route path="/login" element={<Navigate to="/dashboard" replace />} /><Route path="*" element={<AppShell activeMember={activeMember} />} /></Routes></RoleProvider></SalesDataProvider>
 }

@@ -1,7 +1,9 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { App } from './App'
+
+vi.mock('./auth/AuthContext', () => ({ useAuth: () => ({ user: { id: 'manager', name: '陈店长', role: 'manager', active: true }, status: 'authenticated', notice: '', logout: vi.fn(), clearNotice: vi.fn() }) }))
 
 function renderAt(path: string) {
   return render(<MemoryRouter initialEntries={[path]}><App /></MemoryRouter>)
@@ -43,7 +45,7 @@ describe('App routes', () => {
   })
 
   it.each([
-    ['/team', '成员角色管理'],
+    ['/team', '成员账号管理'],
     ['/data-admin', '数据管理与接入中心'],
   ])('renders the phase four route %s', (path, heading) => {
     renderAt(path)

@@ -2,6 +2,14 @@ import { createServer } from 'node:http'
 
 const JSON_TYPE = { 'content-type': 'application/json; charset=utf-8' }
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value)
+const SESSION_COOKIE = 'sales_session'
+
+function parseCookies(header = '') {
+  return Object.fromEntries(header.split(';').map(part => part.trim()).filter(Boolean).map(part => {
+    const index = part.indexOf('=')
+    return index < 0 ? [part, ''] : [part.slice(0, index), decodeURIComponent(part.slice(index + 1))]
+  }))
+}
 
 export class ApiError extends Error {
   constructor(status, code, message, details) { super(message); this.status = status; this.code = code; this.details = details }
@@ -63,27 +71,69 @@ async function readJson(req, maxBodyBytes) {
   catch { throw new ApiError(400, 'INVALID_JSON', 'request body is not valid JSON') }
 }
 
-export function createApiServer({ database, maxBodyBytes = 1_048_576, corsOrigin = '*' }) {
+export function createApiServer({ database, maxBodyBytes = 1_048_576, corsOrigin = '*', sessionTtlMs = 8 * 60 * 60 * 1000, secureCookies = false, loginLimit = 5, loginWindowMs = 15 * 60 * 1000 }) {
+  const loginAttempts = new Map()
   return createServer(async (req, res) => {
-    const headers = { ...JSON_TYPE, 'access-control-allow-origin': corsOrigin, 'access-control-allow-methods': 'GET, PUT, POST, OPTIONS', 'access-control-allow-headers': 'Content-Type' }
+    const requestOrigin = req.headers.origin
+    const allowOrigin = corsOrigin === '*' ? '*' : corsOrigin
+    const headers = { ...JSON_TYPE, 'access-control-allow-origin': allowOrigin, 'access-control-allow-methods': 'GET, PUT, POST, PATCH, OPTIONS', 'access-control-allow-headers': 'Content-Type', ...(allowOrigin === '*' ? {} : { 'access-control-allow-credentials': 'true', vary: 'Origin' }) }
     const send = (status, body, extra = {}) => { res.writeHead(status, { ...headers, ...extra }); res.end(body === undefined ? undefined : JSON.stringify(body)) }
+    const cookie = (value, maxAge) => `${SESSION_COOKIE}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secureCookies ? '; Secure' : ''}`
+    const unsafe = !['GET', 'HEAD', 'OPTIONS'].includes(req.method)
+    const crossSite = req.headers['sec-fetch-site'] === 'cross-site'
+    if ((requestOrigin && corsOrigin !== '*' && requestOrigin !== corsOrigin) || (unsafe && crossSite)) return send(403, { error: { code: 'ORIGIN_FORBIDDEN', message: 'Request origin is not allowed' } })
     if (req.method === 'OPTIONS') return send(204)
     try {
       const url = new URL(req.url, 'http://localhost')
       if (req.method === 'GET' && url.pathname === '/api/health') return send(200, { ok: true, service: 'sales-data', timestamp: new Date().toISOString() })
+      if (req.method === 'POST' && url.pathname === '/api/auth/login') {
+        const address = req.socket.remoteAddress || 'unknown', now = Date.now()
+        const recent = (loginAttempts.get(address) || []).filter(at => now - at < loginWindowMs)
+        if (recent.length >= loginLimit) throw new ApiError(429, 'LOGIN_RATE_LIMITED', 'Too many login attempts; try again later')
+        const body = await readJson(req, maxBodyBytes)
+        const account = database.authenticate(body?.username, body?.password)
+        if (!account) {
+          recent.push(now); loginAttempts.set(address, recent)
+          database.record('login_failed', 'auth_session', { address })
+          throw new ApiError(401, 'INVALID_CREDENTIALS', 'Username or password is incorrect')
+        }
+        loginAttempts.delete(address)
+        const session = database.createSession(account.id, sessionTtlMs)
+        return send(200, { user: account, expiresAt: session.expiresAt }, { 'set-cookie': cookie(session.token, Math.floor(sessionTtlMs / 1000)) })
+      }
+      const sessionToken = parseCookies(req.headers.cookie)[SESSION_COOKIE]
+      const session = database.getSession(sessionToken)
+      if (req.method === 'POST' && url.pathname === '/api/auth/logout') {
+        database.revokeSession(sessionToken)
+        return send(204, undefined, { 'set-cookie': cookie('', 0) })
+      }
+      if (!session) throw new ApiError(401, 'AUTH_REQUIRED', 'Authentication is required')
+      if (req.method === 'GET' && url.pathname === '/api/auth/me') return send(200, { user: session.account, expiresAt: session.expiresAt })
+      const requireManager = () => { if (session.account.role !== 'manager') throw new ApiError(403, 'FORBIDDEN', 'Manager permission is required') }
+      if (req.method === 'GET' && url.pathname === '/api/accounts') { requireManager(); return send(200, { accounts: database.listAccounts() }) }
+      if (req.method === 'POST' && url.pathname === '/api/accounts') {
+        requireManager()
+        try { return send(201, { account: database.createAccount(await readJson(req, maxBodyBytes)) }) }
+        catch (error) { throw new ApiError(String(error?.message).includes('UNIQUE') ? 409 : 400, 'ACCOUNT_INVALID', 'Account details are invalid or already used') }
+      }
+      const statusMatch = url.pathname.match(/^\/api\/accounts\/([^/]+)\/status$/)
+      if (req.method === 'PATCH' && statusMatch) { requireManager(); const body = await readJson(req, maxBodyBytes); return send(200, { account: database.setAccountActive(decodeURIComponent(statusMatch[1]), Boolean(body.active)) }) }
+      const resetMatch = url.pathname.match(/^\/api\/accounts\/([^/]+)\/reset-password$/)
+      if (req.method === 'POST' && resetMatch) { requireManager(); const body = await readJson(req, maxBodyBytes); database.resetAccountPassword(decodeURIComponent(resetMatch[1]), body.password); return send(200, { ok: true }) }
       if (req.method === 'GET' && url.pathname === '/api/state') return send(200, database.getState())
       if (req.method === 'PUT' && url.pathname === '/api/state') { const body = await readJson(req, maxBodyBytes); if (!isObject(body)) throw new ApiError(400, 'VALIDATION_ERROR', 'state must be an object'); return send(200, database.setState(body)) }
       if (req.method === 'GET' && url.pathname === '/api/audit') {
+        requireManager()
         const limit = Number(url.searchParams.get('limit') ?? 50), offset = Number(url.searchParams.get('offset') ?? 0)
         if (!Number.isInteger(limit) || limit < 1 || limit > 200 || !Number.isInteger(offset) || offset < 0) throw new ApiError(400, 'VALIDATION_ERROR', 'limit must be 1..200 and offset must be non-negative')
         return send(200, database.getAudit(limit, offset))
       }
-      if (req.method === 'GET' && url.pathname === '/api/backup') { const backup = database.backup(); return send(200, { ...backup, integrations: publicIntegrations(backup.integrations) }, { 'content-disposition': 'attachment; filename="sales-backup.json"' }) }
-      if (req.method === 'POST' && url.pathname === '/api/restore') return send(200, database.restore(validateBackup(await readJson(req, maxBodyBytes))))
+      if (req.method === 'GET' && url.pathname === '/api/backup') { requireManager(); const backup = database.backup(); return send(200, { ...backup, integrations: publicIntegrations(backup.integrations) }, { 'content-disposition': 'attachment; filename="sales-backup.json"' }) }
+      if (req.method === 'POST' && url.pathname === '/api/restore') { requireManager(); return send(200, database.restore(validateBackup(await readJson(req, maxBodyBytes)))) }
       if (req.method === 'GET' && url.pathname === '/api/members') return send(200, { members: database.getMembers() })
-      if (req.method === 'PUT' && url.pathname === '/api/members') return send(200, { members: database.setMembers(validateMembers(await readJson(req, maxBodyBytes))) })
-      if (req.method === 'GET' && url.pathname === '/api/integrations') return send(200, { integrations: publicIntegrations(database.getIntegrations()) })
-      if (req.method === 'PUT' && url.pathname === '/api/integrations') { const incoming = validateIntegrations(await readJson(req, maxBodyBytes)); const saved = database.setIntegrations(mergeIntegrationSecrets(database.getIntegrations(), incoming)); return send(200, { integrations: publicIntegrations(saved) }) }
+      if (req.method === 'PUT' && url.pathname === '/api/members') { requireManager(); return send(200, { members: database.setMembers(validateMembers(await readJson(req, maxBodyBytes))) }) }
+      if (req.method === 'GET' && url.pathname === '/api/integrations') { requireManager(); return send(200, { integrations: publicIntegrations(database.getIntegrations()) }) }
+      if (req.method === 'PUT' && url.pathname === '/api/integrations') { requireManager(); const incoming = validateIntegrations(await readJson(req, maxBodyBytes)); const saved = database.setIntegrations(mergeIntegrationSecrets(database.getIntegrations(), incoming)); return send(200, { integrations: publicIntegrations(saved) }) }
       throw new ApiError(404, 'NOT_FOUND', 'API route not found')
     } catch (error) {
       const known = error instanceof ApiError

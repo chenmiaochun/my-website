@@ -6,20 +6,48 @@ import { createApiServer } from './app.mjs'
 let database, server, base
 before(async () => {
   database = new SalesDatabase(':memory:')
+  database.ensureInitialAdmin({ username: 'manager', password: 'manager-password-1', name: '店长' })
+  database.createAccount({ username: 'sales', password: 'sales-password-12', name: '销售一', role: 'sales', mustChangePassword: false })
   server = createApiServer({ database, maxBodyBytes: 256 })
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
   base = `http://127.0.0.1:${server.address().port}`
 })
 after(async () => { await new Promise(resolve => server.close(resolve)); database.close() })
 
-const json = (path, options) => fetch(base + path, options).then(async r => ({ status: r.status, body: r.status === 204 ? null : await r.json(), headers: r.headers }))
-const put = (path, body) => json(path, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+let managerCookie = '', salesCookie = ''
+const json = (path, options = {}) => fetch(base + path, { ...options, headers: { ...(options.body ? { 'content-type': 'application/json' } : {}), ...(options.cookie === false ? {} : managerCookie ? { cookie: managerCookie } : {}), ...(options.headers || {}) } }).then(async r => ({ status: r.status, body: r.status === 204 ? null : await r.json(), headers: r.headers }))
+const put = (path, body, options = {}) => json(path, { ...options, method: 'PUT', body: JSON.stringify(body) })
+
+test('authentication requires valid credentials and issues an HttpOnly cookie', async () => {
+  const anonymous = await json('/api/state', { cookie: false })
+  assert.equal(anonymous.status, 401)
+  const wrong = await json('/api/auth/login', { method: 'POST', body: JSON.stringify({ username: 'manager', password: 'wrong-password' }), cookie: false })
+  assert.equal(wrong.status, 401); assert.equal(wrong.body.error.code, 'INVALID_CREDENTIALS')
+  const login = await json('/api/auth/login', { method: 'POST', body: JSON.stringify({ username: 'manager', password: 'manager-password-1' }), cookie: false })
+  assert.equal(login.status, 200); assert.equal(login.body.user.role, 'manager')
+  managerCookie = login.headers.get('set-cookie').split(';')[0]
+  assert.match(login.headers.get('set-cookie'), /HttpOnly/i); assert.match(login.headers.get('set-cookie'), /SameSite=Lax/i)
+  const sales = await json('/api/auth/login', { method: 'POST', body: JSON.stringify({ username: 'sales', password: 'sales-password-12' }), cookie: false })
+  salesCookie = sales.headers.get('set-cookie').split(';')[0]
+  const me = await json('/api/auth/me')
+  assert.equal(me.status, 200); assert.equal(me.body.user.username, 'manager')
+})
+
+test('manager can create, disable and reset accounts', async () => {
+  const created = await json('/api/accounts', { method: 'POST', body: JSON.stringify({ username: 'designer', password: 'designer-pass-123', name: '设计一', role: 'designer' }) })
+  assert.equal(created.status, 201); assert.equal(created.body.account.username, 'designer')
+  const listed = await json('/api/accounts'); assert.equal(listed.status, 200); assert.ok(listed.body.accounts.some(item => item.username === 'designer'))
+  const disabled = await json(`/api/accounts/${created.body.account.id}/status`, { method: 'PATCH', body: JSON.stringify({ active: false }) })
+  assert.equal(disabled.status, 200); assert.equal(disabled.body.account.active, false)
+  const reset = await json(`/api/accounts/${created.body.account.id}/reset-password`, { method: 'POST', body: JSON.stringify({ password: 'new-designer-pass-123' }) })
+  assert.equal(reset.status, 200); assert.equal(reset.body.ok, true)
+})
 
 test('health and CORS', async () => { const r = await json('/api/health'); assert.equal(r.status, 200); assert.equal(r.body.ok, true); assert.equal(r.headers.get('access-control-allow-origin'), '*') })
 test('state round trip and audit', async () => {
   assert.deepEqual((await put('/api/state', { pipeline: ['new'] })).body.value, { pipeline: ['new'] })
   assert.deepEqual((await json('/api/state')).body.value, { pipeline: ['new'] })
-  const audit = await json('/api/audit?limit=10&offset=0'); assert.equal(audit.body.total, 1); assert.equal(audit.body.items[0].resource, 'state')
+  const audit = await json('/api/audit?limit=20&offset=0'); assert.ok(audit.body.total >= 1); assert.ok(audit.body.items.some(item => item.resource === 'state'))
 })
 test('members and integrations round trip', async () => {
   assert.deepEqual((await put('/api/members', { members: [{ id: 'u1', name: 'Li' }] })).body.members, [{ id: 'u1', name: 'Li' }])
@@ -33,8 +61,29 @@ test('integration secrets are stored but never returned', async () => {
   assert.equal(JSON.stringify(fetched.body).includes('private-value'), false)
   const backup = await json('/api/backup')
   assert.equal(JSON.stringify(backup.body).includes('private-value'), false)
+  assert.equal(JSON.stringify(backup.body).includes('password_hash'), false)
+  assert.equal(JSON.stringify(backup.body).includes('auth_sessions'), false)
   const updated = await put('/api/integrations', { integrations: { wechat: { corpId: 'corp-2', secretConfigured: true } } })
   assert.equal(updated.body.integrations.wechat.secretConfigured, true)
+})
+test('role checks reject manager-only APIs', async () => {
+  const audit = await json('/api/audit', { headers: { cookie: salesCookie } })
+  assert.equal(audit.status, 403); assert.equal(audit.body.error.code, 'FORBIDDEN')
+  const backup = await json('/api/backup', { headers: { cookie: salesCookie } })
+  assert.equal(backup.status, 403)
+  assert.equal((await json('/api/state', { headers: { cookie: salesCookie } })).status, 200)
+})
+test('logout revokes the session', async () => {
+  const login = await json('/api/auth/login', { method: 'POST', body: JSON.stringify({ username: 'manager', password: 'manager-password-1' }), cookie: false })
+  const sessionCookie = login.headers.get('set-cookie').split(';')[0]
+  const logout = await json('/api/auth/logout', { method: 'POST', headers: { cookie: sessionCookie } })
+  assert.equal(logout.status, 204); assert.match(logout.headers.get('set-cookie'), /Max-Age=0/)
+  const expired = await json('/api/auth/me', { headers: { cookie: sessionCookie } })
+  assert.equal(expired.status, 401)
+})
+test('cross-site unsafe requests are rejected', async () => {
+  const response = await json('/api/state', { method: 'PUT', body: JSON.stringify({ unsafe: true }), headers: { 'sec-fetch-site': 'cross-site' } })
+  assert.equal(response.status, 403); assert.equal(response.body.error.code, 'ORIGIN_FORBIDDEN')
 })
 test('backup can restore prior data', async () => {
   const backup = (await json('/api/backup')).body
