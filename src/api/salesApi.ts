@@ -4,7 +4,7 @@ const API_BASE = 'http://127.0.0.1:3001/api'
 
 export interface RemoteSalesState { customers: Customer[]; followUps: FollowUp[] }
 export interface RemoteAuditEvent { id: number; action: string; resource: string; details: Record<string, unknown>; createdAt: string }
-export type AccountRole = 'manager' | 'sales' | 'designer'
+export type AccountRole = 'manager' | 'sales' | 'designer' | 'operations' | 'aftersales'
 export interface RemoteAccount {
   id: string
   username: string

@@ -1,4 +1,4 @@
-export type TeamRole = 'manager' | 'sales' | 'designer'
+export type TeamRole = 'manager' | 'sales' | 'designer' | 'operations' | 'aftersales'
 
 export type AccessPermission =
   | 'store.analytics'
@@ -30,6 +30,8 @@ export const ROLE_LABELS: Record<TeamRole, string> = {
   manager: '店长',
   sales: '销售',
   designer: '设计师',
+  operations: '运营',
+  aftersales: '售后',
 }
 
 export const PERMISSION_LABELS: Record<AccessPermission, string> = {
@@ -51,6 +53,8 @@ const ROLE_PERMISSIONS: Record<TeamRole, ReadonlySet<AccessPermission>> = {
   manager: new Set(ALL_PERMISSIONS),
   sales: new Set(['customers.own', 'tasks.own', 'conversation.analysis', 'sop']),
   designer: new Set(['customers.design']),
+  operations: new Set(['store.analytics', 'customers.own', 'tasks.own', 'conversation.analysis', 'revenue.summary']),
+  aftersales: new Set(['customers.own', 'tasks.own', 'conversation.analysis', 'sop']),
 }
 
 export function hasPermission(role: TeamRole, permission: AccessPermission): boolean {
@@ -62,7 +66,7 @@ export function getRolePermissions(role: TeamRole): AccessPermission[] {
 }
 
 export function canAccessCustomer(identity: RoleIdentity, customer: CustomerAccessSubject): boolean {
-  if (identity.role === 'manager') return true
+  if (identity.role === 'manager' || identity.role === 'operations' || identity.role === 'aftersales') return true
   if (identity.role === 'sales') {
     return customer.salespersonId === identity.id || customer.salesperson === identity.name
   }

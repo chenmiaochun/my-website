@@ -24,4 +24,12 @@ describe('team role access', () => {
     expect(hasPermission('designer', 'customers.design')).toBe(true)
     expect(canViewRevenueSummary('designer')).toBe(false)
   })
+
+  it('supports operations and aftersales store workflows', () => {
+    expect(hasPermission('operations', 'store.analytics')).toBe(true)
+    expect(canViewRevenueSummary('operations')).toBe(true)
+    expect(hasPermission('aftersales', 'tasks.own')).toBe(true)
+    expect(canAccessCustomer({ id: 'ops-1', name: '赵运营', role: 'operations' }, {})).toBe(true)
+    expect(canAccessCustomer({ id: 'service-1', name: '孙售后', role: 'aftersales' }, {})).toBe(true)
+  })
 })

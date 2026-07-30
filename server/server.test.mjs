@@ -43,6 +43,13 @@ test('manager can create, disable and reset accounts', async () => {
   assert.equal(reset.status, 200); assert.equal(reset.body.ok, true)
 })
 
+test('manager can register operations and aftersales employees', async () => {
+  for (const role of ['operations', 'aftersales']) {
+    const created = await json('/api/accounts', { method: 'POST', body: JSON.stringify({ username: `${role}-user`, password: `${role}-password-123`, name: role, role }) })
+    assert.equal(created.status, 201); assert.equal(created.body.account.role, role)
+  }
+})
+
 test('health and CORS', async () => { const r = await json('/api/health'); assert.equal(r.status, 200); assert.equal(r.body.ok, true); assert.equal(r.headers.get('access-control-allow-origin'), '*') })
 test('state round trip and audit', async () => {
   assert.deepEqual((await put('/api/state', { pipeline: ['new'] })).body.value, { pipeline: ['new'] })

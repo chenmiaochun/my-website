@@ -13,4 +13,6 @@ export const defaultTeamMembers: TeamMember[] = [
   { id: 'member-sales-1', name: '刘先生', role: 'sales', phone: '138 0000 1002', active: true },
   { id: 'member-sales-2', name: '王顾问', role: 'sales', phone: '138 0000 1003', active: true },
   { id: 'member-designer', name: '林设计师', role: 'designer', phone: '138 0000 1004', active: true },
+  { id: 'member-operations', name: '赵运营', role: 'operations', phone: '138 0000 1005', active: true },
+  { id: 'member-aftersales', name: '孙售后', role: 'aftersales', phone: '138 0000 1006', active: true },
 ]

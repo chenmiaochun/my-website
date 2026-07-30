@@ -22,6 +22,39 @@ export class SalesDatabase {
   constructor(filename = ':memory:') {
     this.db = new DatabaseSync(filename)
     this.db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;')
+    const accountSchema = this.db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'auth_accounts'").get()?.sql || ''
+    if (accountSchema && !accountSchema.includes("'operations'")) {
+      this.db.exec(`
+        PRAGMA foreign_keys = OFF;
+        BEGIN IMMEDIATE;
+        ALTER TABLE auth_sessions RENAME TO auth_sessions_legacy;
+        ALTER TABLE auth_accounts RENAME TO auth_accounts_legacy;
+        CREATE TABLE auth_accounts (
+          id TEXT PRIMARY KEY,
+          username TEXT NOT NULL COLLATE NOCASE UNIQUE,
+          password_hash TEXT NOT NULL,
+          name TEXT NOT NULL,
+          role TEXT NOT NULL CHECK(role IN ('manager', 'sales', 'designer', 'operations', 'aftersales')),
+          active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)),
+          must_change_password INTEGER NOT NULL DEFAULT 0 CHECK(must_change_password IN (0, 1)),
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE auth_sessions (
+          token_hash TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL REFERENCES auth_accounts(id) ON DELETE CASCADE,
+          expires_at TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          last_seen_at TEXT NOT NULL
+        );
+        INSERT INTO auth_accounts SELECT * FROM auth_accounts_legacy;
+        INSERT INTO auth_sessions SELECT * FROM auth_sessions_legacy;
+        DROP TABLE auth_sessions_legacy;
+        DROP TABLE auth_accounts_legacy;
+        COMMIT;
+        PRAGMA foreign_keys = ON;
+      `)
+    }
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS app_state (
         id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -50,7 +83,7 @@ export class SalesDatabase {
         username TEXT NOT NULL COLLATE NOCASE UNIQUE,
         password_hash TEXT NOT NULL,
         name TEXT NOT NULL,
-        role TEXT NOT NULL CHECK(role IN ('manager', 'sales', 'designer')),
+        role TEXT NOT NULL CHECK(role IN ('manager', 'sales', 'designer', 'operations', 'aftersales')),
         active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)),
         must_change_password INTEGER NOT NULL DEFAULT 0 CHECK(must_change_password IN (0, 1)),
         created_at TEXT NOT NULL,
@@ -145,7 +178,7 @@ export class SalesDatabase {
     return this.publicAccount(this.statements.accountById.get(id))
   }
   createAccount({ username, password, name, role, active = true, mustChangePassword = true }) {
-    if (!['manager', 'sales', 'designer'].includes(role)) throw new Error('Invalid account role')
+    if (!['manager', 'sales', 'designer', 'operations', 'aftersales'].includes(role)) throw new Error('Invalid account role')
     if (!username?.trim() || !name?.trim() || String(password || '').length < 10) throw new Error('Invalid account details')
     const at = this.now(), id = `account-${randomBytes(8).toString('hex')}`
     this.statements.insertAccount.run(id, username.trim(), hashPassword(password), name.trim(), role, active ? 1 : 0, mustChangePassword ? 1 : 0, at, at)
