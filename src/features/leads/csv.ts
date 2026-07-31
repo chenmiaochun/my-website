@@ -1,8 +1,9 @@
 import type { Customer } from '../../types'
 
 export const CSV_HEADERS = ['姓名', '电话', '来源', '负责人', '意向', '预计金额', '产品', '风格', '预算', '装修进度', '关注点', '下次跟进'] as const
+export const OPTIONAL_CSV_HEADERS = ['客户编号', '微信名', '城市', '到店日期', '客户状态', '备注', '车辆品牌'] as const
 
-export type CsvRecord = Record<(typeof CSV_HEADERS)[number], string>
+export type CsvRecord = Record<(typeof CSV_HEADERS)[number], string> & Partial<Record<(typeof OPTIONAL_CSV_HEADERS)[number], string>>
 export interface CsvPreviewRow { line: number; values: CsvRecord; errors: string[] }
 
 export function parseCsv(text: string): string[][] {
@@ -44,10 +45,9 @@ export function previewCustomerCsv(text: string): { rows: CsvPreviewRow[]; fileE
   if (missing.length) return { rows: [], fileErrors: [`缺少字段：${missing.join('、')}`] }
 
   const rows = parsed.slice(1).filter((row) => row.some((value) => value.trim())).map((row, index) => {
-    const values = Object.fromEntries(CSV_HEADERS.map((header) => [header, row[headers.indexOf(header)]?.trim() ?? ''])) as CsvRecord
+    const values = Object.fromEntries([...CSV_HEADERS, ...OPTIONAL_CSV_HEADERS].map((header) => [header, headers.includes(header) ? row[headers.indexOf(header)]?.trim() ?? '' : ''])) as CsvRecord
     const errors: string[] = []
     if (!values.姓名) errors.push('姓名必填')
-    if (!values.电话) errors.push('电话必填')
     if (values.电话 && !/^[+\d][\d\s-]{5,19}$/.test(values.电话)) errors.push('电话格式不正确')
     if (!values.负责人) errors.push('负责人必填')
     if (!['高', '中', '低'].includes(values.意向)) errors.push('意向须为高、中或低')
@@ -60,13 +60,17 @@ export function previewCustomerCsv(text: string): { rows: CsvPreviewRow[]; fileE
 
 export function csvRowToCustomer(row: CsvPreviewRow, now = new Date()): Customer {
   const values = row.values
+  const importedDate = values.到店日期?.replace(/\//g, '-')
+  const importedAt = importedDate && !Number.isNaN(Date.parse(importedDate)) ? new Date(`${importedDate}T12:00:00`) : now
+  const statusStage: Partial<Record<string, Customer['stage']>> = { 已成交: '已成交', 已流失: '已流失', 持续跟进: '需求确认', 首次到店: '到店/量房' }
+  const supplemental = [values.客户编号 && `客户编号：${values.客户编号}`, values.微信名 && `微信名：${values.微信名}`, values.备注].filter(Boolean).join('；')
   return {
     id: `lead-${now.getTime()}-${row.line}-${Math.random().toString(36).slice(2, 7)}`,
     name: values.姓名,
     phone: values.电话,
     source: values.来源,
     salesperson: values.负责人,
-    stage: '新线索',
+    stage: statusStage[values.客户状态 ?? ''] ?? '新线索',
     intent: values.意向 as Customer['intent'],
     expectedAmount: Number(values.预计金额),
     products: splitList(values.产品),
@@ -74,13 +78,16 @@ export function csvRowToCustomer(row: CsvPreviewRow, now = new Date()): Customer
     budget: values.预算,
     renovationProgress: values.装修进度,
     concerns: splitList(values.关注点),
-    lastContactAt: now.toISOString(),
+    cityArea: values.城市,
+    vehicleBrand: values.车辆品牌,
+    notes: supplemental || undefined,
+    lastContactAt: importedAt.toISOString(),
     nextFollowUpAt: values.下次跟进 ? new Date(values.下次跟进).toISOString() : undefined,
-    createdAt: now.toISOString().slice(0, 10),
+    createdAt: importedAt.toISOString().slice(0, 10),
   }
 }
 
-function splitList(value: string): string[] { return value.split(/[|、；;]/).map((item) => item.trim()).filter(Boolean) }
+function splitList(value: string): string[] { return value.split(/[|,，、；;]/).map((item) => item.trim()).filter(Boolean) }
 
 export function customerCsv(customers: Customer[]): string {
   return serializeCsv([

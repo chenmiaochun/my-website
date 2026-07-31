@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Customer } from '../../types'
-import { CSV_HEADERS, customerCsv, parseCsv, previewCustomerCsv, serializeCsv } from './csv'
+import { CSV_HEADERS, OPTIONAL_CSV_HEADERS, csvRowToCustomer, customerCsv, parseCsv, previewCustomerCsv, serializeCsv } from './csv'
 
 describe('CSV utilities', () => {
   it('parses BOM, quoted commas, escaped quotes and line breaks', () => {
@@ -29,5 +29,12 @@ describe('CSV utilities', () => {
     expect(result.fileErrors).toEqual([])
     expect(result.rows[0].errors).toEqual([])
     expect(result.rows[0].values).toMatchObject({ 姓名: '张,女士', 产品: '沙发|餐边柜', 关注点: '价格|交期' })
+  })
+
+  it('imports Feishu customers without inventing a phone number', () => {
+    const csv = serializeCsv([[...CSV_HEADERS, ...OPTIONAL_CSV_HEADERS], ['蔡晓崇', '', '抖音', '陈婉珊', '高', '50000', '沙发,茶台', '', '2-5万', '硬装中', '', '', '37407', '蔡小W', '汕头', '2026/07/02', '首次到店', '已交诚意金', '问界']])
+    const preview = previewCustomerCsv(csv)
+    expect(preview.rows[0].errors).toEqual([])
+    expect(csvRowToCustomer(preview.rows[0])).toMatchObject({ phone: '', stage: '到店/量房', cityArea: '汕头', vehicleBrand: '问界', products: ['沙发', '茶台'], notes: '客户编号：37407；微信名：蔡小W；已交诚意金', createdAt: '2026-07-02' })
   })
 })

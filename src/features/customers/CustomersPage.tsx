@@ -218,8 +218,8 @@ export function CustomersPage({ customers, followUps, designers = [{ id: 'demo-d
               <button className="mobile-back" onClick={() => setSelectedId('')}><ArrowLeft size={18} />返回客户列表</button>
               <div className="detail-heading">
                 <div className="customer-avatar">{selected.name.slice(0, 1)}</div>
-                <div><div className="title-line"><h2>{selected.name}</h2><span className={`intent-badge intent-${selected.intent}`}>{selected.intent}意向</span></div><p>{selected.phone} · 负责人 {selected.salesperson}</p></div>
-                <a className="icon-button" href={`tel:${selected.phone.replace(/\*/g, '')}`} title="拨打电话" aria-label="拨打电话"><Phone size={19} /></a>
+                <div><div className="title-line"><h2>{selected.name}</h2><span className={`intent-badge intent-${selected.intent}`}>{selected.intent}意向</span></div><p>{selected.phone || '电话未登记'} · 负责人 {selected.salesperson}</p></div>
+                {selected.phone && <a className="icon-button" href={`tel:${selected.phone.replace(/\*/g, '')}`} title="拨打电话" aria-label="拨打电话"><Phone size={19} /></a>}
               </div>
 
               <section className="handoff-card"><div><span>客户责任链</span><strong>{selected.sourceService ? `来源客服 ${selected.sourceService}` : '销售直接接待'}<b>→</b>{selected.handoffStatus === '待销售接收' ? `待 ${selected.pendingSalesperson} 接收` : `销售 ${selected.salesperson}`}</strong>{selected.handoffHistory?.[0] && <small>{selected.handoffHistory[0].summary}</small>}</div><div>{selected.handoffStatus === '待销售接收' && (activeMember.role === 'manager' || activeMember.id === selected.pendingSalespersonId || activeMember.name === selected.pendingSalesperson) ? <button className="primary-button" onClick={acceptHandoff}>接收客户</button> : (activeMember.role === 'manager' || activeMember.role === 'operations') && <button className="secondary-button" onClick={() => setHandoffOpen(true)}><ArrowRightLeft size={16}/>转交销售</button>}</div></section>
