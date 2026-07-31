@@ -23,4 +23,23 @@ describe('CustomersPage design collaboration', () => {
     expect(onStateChange).toHaveBeenCalled()
     expect(onAddDesignTask).toHaveBeenCalledWith(expect.objectContaining({ customerId:'c1', designerId:'designer-1', designerName:'陈设计师', type:'效果图', requirement:'按现场尺寸完成客厅效果图', status:'待接收' }))
   })
+
+  it('records a customer-service handoff to a salesperson', () => {
+    const onStateChange = vi.fn()
+    render(<CustomersPage customers={customers} followUps={followUps} salespeople={[{ id:'sales-2', name:'吴销售' }]} activeMember={{ id:'service-1', name:'小陈客服', role:'operations', active:true }} onStateChange={onStateChange} />)
+    fireEvent.click(screen.getByRole('button', { name:'转交销售' }))
+    fireEvent.change(screen.getByLabelText('接收销售 *'), { target:{ value:'sales-2' } })
+    fireEvent.change(screen.getByLabelText('交接摘要 *'), { target:{ value:'线上咨询沙发，预算五万元，周六到店' } })
+    fireEvent.click(screen.getByRole('button', { name:'确认转交' }))
+    const state = onStateChange.mock.calls[0][0]
+    expect(state.customers.find((item: { id:string }) => item.id === 'c1')).toMatchObject({ sourceService:'小陈客服', handoffStatus:'待销售接收', pendingSalesperson:'吴销售', pendingSalespersonId:'sales-2', handoffHistory:[expect.objectContaining({ fromName:'小陈客服', toName:'吴销售', summary:'线上咨询沙发，预算五万元，周六到店' })] })
+  })
+
+  it('switches ownership when the assigned salesperson accepts', () => {
+    const onStateChange = vi.fn()
+    const pending = [{ ...customers[0], sourceService:'小陈客服', handoffStatus:'待销售接收' as const, pendingSalesperson:'吴销售', pendingSalespersonId:'sales-2', handoffHistory:[{ id:'h1', fromName:'小陈客服', toName:'吴销售', toId:'sales-2', status:'待销售接收' as const, summary:'已邀约到店', createdAt:'2026-07-31T10:00:00Z' }] }]
+    render(<CustomersPage customers={pending} followUps={[]} activeMember={{ id:'sales-2', name:'吴销售', role:'sales', active:true }} onStateChange={onStateChange} />)
+    fireEvent.click(screen.getByRole('button', { name:'接收客户' }))
+    expect(onStateChange.mock.calls[0][0].customers[0]).toMatchObject({ salesperson:'吴销售', salespersonId:'sales-2', handoffStatus:'已接收', pendingSalesperson:undefined, handoffHistory:[expect.objectContaining({ status:'已接收' })] })
+  })
 })

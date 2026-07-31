@@ -18,12 +18,15 @@ export type CustomerAccessSubject = {
   designer?: string
   designerId?: string
   designerIds?: string[]
+  pendingSalesperson?: string
+  pendingSalespersonId?: string
 }
 
 export interface RoleIdentity {
   id: string
   name: string
   role: TeamRole
+  canDesign?: boolean
 }
 
 export const ROLE_LABELS: Record<TeamRole, string> = {
@@ -68,7 +71,8 @@ export function getRolePermissions(role: TeamRole): AccessPermission[] {
 export function canAccessCustomer(identity: RoleIdentity, customer: CustomerAccessSubject): boolean {
   if (identity.role === 'manager' || identity.role === 'operations' || identity.role === 'aftersales') return true
   if (identity.role === 'sales') {
-    return customer.salespersonId === identity.id || customer.salesperson === identity.name
+    return customer.salespersonId === identity.id || customer.salesperson === identity.name || customer.pendingSalespersonId === identity.id || customer.pendingSalesperson === identity.name
+      || Boolean(identity.canDesign && (customer.designerId === identity.id || customer.designer === identity.name || customer.designerIds?.includes(identity.id)))
   }
   return customer.designerId === identity.id
     || customer.designer === identity.name

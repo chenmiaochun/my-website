@@ -30,4 +30,11 @@ describe('TeamAccessPage', () => {
     expect(await screen.findByText('禁用')).toBeInTheDocument()
   })
 
+  it('supports a sales and designer dual identity', async () => {
+    render(<TeamAccessPage />)
+    fireEvent.click(await screen.findByRole('button', { name:'新增账号' }))
+    expect(screen.getByRole('checkbox', { name:/同时承担设计师职责/ })).toBeInTheDocument()
+    expect(screen.getByText('该账号既可负责销售客户，也可接收设计协作任务')).toBeInTheDocument()
+  })
+
 })

@@ -14,6 +14,7 @@ describe('team role access', () => {
     expect(getRolePermissions('sales')).toEqual(['customers.own', 'tasks.own', 'conversation.analysis', 'sop'])
     expect(canAccessCustomer({ id: 's1', name: '小刘', role: 'sales' }, { salespersonId: 's1' })).toBe(true)
     expect(canAccessCustomer({ id: 's1', name: '小刘', role: 'sales' }, { salesperson: '小王' })).toBe(false)
+    expect(canAccessCustomer({ id: 's1', name: '小刘', role: 'sales' }, { pendingSalespersonId: 's1' })).toBe(true)
     expect(canViewRevenueSummary('sales')).toBe(false)
   })
 

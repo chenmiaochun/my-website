@@ -21,7 +21,7 @@ export function RoleProvider({ identity, role = 'sales', children }: RoleProvide
   const value = useMemo<RoleAccessValue>(() => ({
     identity: resolved,
     role: resolved.role,
-    can: (permission) => hasPermission(resolved.role, permission),
+    can: (permission) => hasPermission(resolved.role, permission) || Boolean(resolved.canDesign && permission === 'customers.design'),
     canAccessCustomer: (customer) => canAccessCustomer(resolved, customer),
   }), [resolved.id, resolved.name, resolved.role])
 

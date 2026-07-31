@@ -4,6 +4,7 @@ export interface TeamMember {
   id: string
   name: string
   role: TeamRole
+  canDesign?: boolean
   phone?: string
   active: boolean
 }

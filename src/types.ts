@@ -10,6 +10,7 @@ export interface FollowUp {
   nextAction?: string
   nextAt?: string
   salesperson: string
+  salespersonId?: string
 }
 
 export interface Customer {
@@ -20,6 +21,11 @@ export interface Customer {
   salesperson: string
   designer?: string
   designerId?: string
+  sourceService?: string
+  handoffStatus?: '待分配' | '待销售接收' | '已接收' | '已开始跟进'
+  pendingSalesperson?: string
+  pendingSalespersonId?: string
+  handoffHistory?: CustomerHandoff[]
   stage: CustomerStage
   intent: '高' | '中' | '低'
   expectedAmount: number
@@ -42,6 +48,18 @@ export interface Customer {
   nextFollowUpAt?: string
   createdAt: string
   lostReason?: string
+}
+
+export interface CustomerHandoff {
+  id: string
+  fromName: string
+  toName: string
+  toId?: string
+  status: '待销售接收' | '已接收'
+  summary: string
+  appointmentAt?: string
+  createdAt: string
+  acceptedAt?: string
 }
 
 export interface CustomerFile {

@@ -55,6 +55,15 @@ test('employees can list active designers without account secrets', async () => 
   assert.equal(JSON.stringify(listed.body).includes('password'), false)
 })
 
+test('sales designers appear in both sales and designer directories', async () => {
+  const created = await json('/api/accounts', { method: 'POST', body: JSON.stringify({ username: 'sales-designer', password: 'sales-design-pass', name: '销售设计师', role: 'sales', canDesign: true }) })
+  assert.equal(created.body.account.canDesign, true)
+  const designers = await json('/api/designers', { headers: { cookie: salesCookie } })
+  const salespeople = await json('/api/salespeople', { headers: { cookie: salesCookie } })
+  assert.ok(designers.body.designers.some(item => item.id === created.body.account.id))
+  assert.ok(salespeople.body.salespeople.some(item => item.id === created.body.account.id))
+})
+
 test('manager can register operations and aftersales employees', async () => {
   for (const role of ['operations', 'aftersales']) {
     const created = await json('/api/accounts', { method: 'POST', body: JSON.stringify({ username: `${role}-user`, password: `${role}-password-123`, name: role, role }) })

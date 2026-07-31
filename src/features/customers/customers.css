@@ -33,6 +33,7 @@
 .customer-avatar { width: 50px; height: 50px; display: grid; place-items: center; background: #dfe9e3; color: var(--green); font-size: 20px; font-weight: 700; }
 .title-line { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }.title-line h2 { margin: 0; font-size: 23px; letter-spacing: 0; }
 .detail-heading p { margin: 5px 0 0; color: var(--muted); font-size: 13px; }
+.handoff-card { display:flex; align-items:center; justify-content:space-between; gap:16px; margin:18px 0 0; padding:13px 14px; border:1px solid #cfdcd3; background:#f3f8f4; }.handoff-card>div:first-child { display:flex; min-width:0; flex-direction:column; gap:4px; }.handoff-card span,.handoff-card small { color:var(--muted); font-size:11px; }.handoff-card strong { display:flex; align-items:center; flex-wrap:wrap; gap:8px; color:var(--green); font-size:13px; }.handoff-card strong b { color:#94a39a; }.handoff-dialog select { width:100%; min-height:40px; padding:0 10px; border:1px solid #d9dedb; background:#fff; }.handoff-dialog form label:last-of-type { grid-column:1 / -1; }
 .intent-badge { padding: 3px 8px; font-size: 11px; background: #edf0ee; }.intent-badge.intent-高 { color: #a6422c; background: #f8e9e5; }.intent-badge.intent-中 { color: #936313; background: #f8f0dc; }
 .icon-button { width: 38px; height: 38px; border: 1px solid #dfe4e1; background: #fff; color: var(--green); display: grid; place-items: center; cursor: pointer; text-decoration: none; }
 .stage-editor { display: flex; align-items: center; gap: 12px; margin: 22px 0 16px; padding: 12px 14px; border: 1px solid var(--line); background: #fff; }
@@ -70,7 +71,7 @@
   .customer-detail { padding: 16px 14px 38px; }.mobile-back { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 16px; padding: 0; border: 0; background: transparent; color: var(--green); }
   .customer-tools { padding: 14px; }.customer-row { min-height: 106px; padding-left: 16px; }
   .stage-editor { align-items: flex-start; flex-wrap: wrap; }.stage-editor span { width: 100%; margin-left: 0; }.next-task { grid-template-columns: 36px 1fr; }.task-status { display: none; }
-  .customer-profile, .timeline-section { margin-top: 14px; padding: 16px; }.customer-profile dl { grid-template-columns: 1fr 1fr; gap: 15px; }
+  .customer-profile, .timeline-section { margin-top: 14px; padding: 16px; }.customer-profile dl { grid-template-columns: 1fr 1fr; gap: 15px; }.handoff-card { align-items:flex-start; flex-direction:column; }.handoff-card>div:last-child,.handoff-card button { width:100%; }
   .followup-dialog form { grid-template-columns: 1fr; }.followup-dialog form > * { grid-column: 1; }.dialog-backdrop { padding: 0; align-items: end; }.followup-dialog { max-height: 92vh; }.design-grid { grid-template-columns:1fr; }.design-assist-toggle { align-items:flex-start; flex-direction:column; }
 }
 @media (max-width: 410px) { .customer-profile dl { grid-template-columns: 1fr; }.filter-row { grid-template-columns: 18px 1fr; }.filter-row select:last-child { grid-column: 2; }.timeline-meta { align-items: flex-start; flex-direction: column; gap: 3px; } }

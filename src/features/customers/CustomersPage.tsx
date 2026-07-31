@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   ArrowLeft,
+  ArrowRightLeft,
   CalendarClock,
   CheckCircle2,
   ChevronRight,
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react'
 import { customers as seedCustomers, followUps as seedFollowUps } from '../../data'
 import type { Customer, CustomerFile, CustomerStage, DesignTask, DesignTaskType, FollowUp } from '../../types'
+import type { TeamMember } from '../team'
 import './customers.css'
 
 const STORAGE_KEY = 'shangpinju.customer-followup.v1'
@@ -31,6 +33,8 @@ export interface CustomersPageProps {
   followUps?: FollowUp[]
   onStateChange?: (state: CustomerWorkspaceState) => void
   designers?: { id: string; name: string }[]
+  salespeople?: { id: string; name: string }[]
+  activeMember?: TeamMember
   onAddDesignTask?: (task: DesignTask) => void
 }
 type Channel = FollowUp['channel']
@@ -69,7 +73,7 @@ function isOverdue(value?: string) {
   return Boolean(value && new Date(value).getTime() < Date.now())
 }
 
-export function CustomersPage({ customers, followUps, designers = [{ id: 'demo-designer', name: '林设计师' }], onStateChange, onAddDesignTask }: CustomersPageProps = {}) {
+export function CustomersPage({ customers, followUps, designers = [{ id: 'demo-designer', name: '林设计师' }], salespeople = [{ id: 'demo-sales', name: '林晓' }], activeMember = { id: 'manager', name: '店长', role: 'manager', active: true }, onStateChange, onAddDesignTask }: CustomersPageProps = {}) {
   const [localState, setLocalState] = useState<CustomerWorkspaceState>(readState)
   const controlled = customers !== undefined && followUps !== undefined && onStateChange !== undefined
   const state = controlled ? { customers, followUps } : localState
@@ -79,6 +83,7 @@ export function CustomersPage({ customers, followUps, designers = [{ id: 'demo-d
   const [ownerFilter, setOwnerFilter] = useState('全部')
   const [taskFilter, setTaskFilter] = useState<'全部' | '待跟进' | '已逾期'>('全部')
   const [formOpen, setFormOpen] = useState(false)
+  const [handoffOpen, setHandoffOpen] = useState(false)
 
   useEffect(() => {
     if (!controlled) try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state)) } catch { /* no-op */ }
@@ -128,6 +133,7 @@ export function CustomersPage({ customers, followUps, designers = [{ id: 'demo-d
         ...customer,
         lastContactAt: data.at,
         nextFollowUpAt: data.nextAt || undefined,
+        handoffStatus: customer.handoffStatus === '已接收' ? '已开始跟进' : customer.handoffStatus,
       } : customer),
     }))
     if (design && onAddDesignTask) {
@@ -135,6 +141,22 @@ export function CustomersPage({ customers, followUps, designers = [{ id: 'demo-d
       onAddDesignTask({ ...design, id: `design-${Date.now()}`, customerId: selected.id, customerName: selected.name, salesperson: selected.salesperson, status: '待接收', solutionFiles: [], createdAt: now, updatedAt: now })
     }
     setFormOpen(false)
+  }
+
+  function createHandoff(salespersonId: string, summary: string, appointmentAt?: string) {
+    if (!selected) return
+    const target = salespeople.find((item) => item.id === salespersonId)
+    if (!target) return
+    const at = new Date().toISOString()
+    const handoff = { id: `handoff-${Date.now()}`, fromName: activeMember.name, toName: target.name, toId: target.id, status: '待销售接收' as const, summary, appointmentAt: appointmentAt ? new Date(appointmentAt).toISOString() : undefined, createdAt: at }
+    commit((current) => ({ ...current, customers: current.customers.map((item) => item.id === selected.id ? { ...item, sourceService: item.sourceService || activeMember.name, handoffStatus: '待销售接收', pendingSalesperson: target.name, pendingSalespersonId: target.id, handoffHistory: [handoff, ...(item.handoffHistory ?? [])] } : item) }))
+    setHandoffOpen(false)
+  }
+
+  function acceptHandoff() {
+    if (!selected) return
+    const at = new Date().toISOString()
+    commit((current) => ({ ...current, customers: current.customers.map((item) => item.id === selected.id ? { ...item, salesperson: item.pendingSalesperson || item.salesperson, salespersonId: item.pendingSalespersonId, pendingSalesperson: undefined, pendingSalespersonId: undefined, handoffStatus: '已接收', nextFollowUpAt: item.nextFollowUpAt || at, handoffHistory: (item.handoffHistory ?? []).map((handoff, index) => index === 0 ? { ...handoff, status: '已接收' as const, acceptedAt: at } : handoff) } : item) }))
   }
 
   return (
@@ -192,6 +214,8 @@ export function CustomersPage({ customers, followUps, designers = [{ id: 'demo-d
                 <a className="icon-button" href={`tel:${selected.phone.replace(/\*/g, '')}`} title="拨打电话" aria-label="拨打电话"><Phone size={19} /></a>
               </div>
 
+              <section className="handoff-card"><div><span>客户责任链</span><strong>{selected.sourceService ? `来源客服 ${selected.sourceService}` : '销售直接接待'}<b>→</b>{selected.handoffStatus === '待销售接收' ? `待 ${selected.pendingSalesperson} 接收` : `销售 ${selected.salesperson}`}</strong>{selected.handoffHistory?.[0] && <small>{selected.handoffHistory[0].summary}</small>}</div><div>{selected.handoffStatus === '待销售接收' && (activeMember.role === 'manager' || activeMember.id === selected.pendingSalespersonId || activeMember.name === selected.pendingSalesperson) ? <button className="primary-button" onClick={acceptHandoff}>接收客户</button> : (activeMember.role === 'manager' || activeMember.role === 'operations') && <button className="secondary-button" onClick={() => setHandoffOpen(true)}><ArrowRightLeft size={16}/>转交销售</button>}</div></section>
+
               <div className="stage-editor">
                 <label htmlFor="customer-stage">当前阶段</label>
                 <select id="customer-stage" value={selected.stage} onChange={(event) => updateStage(event.target.value as CustomerStage)}>{stages.map((stage) => <option key={stage}>{stage}</option>)}</select>
@@ -235,8 +259,16 @@ export function CustomersPage({ customers, followUps, designers = [{ id: 'demo-d
         </main>
       </div>
       {formOpen && selected && <FollowUpDialog customer={selected} designers={designers} onClose={() => setFormOpen(false)} onSubmit={addFollowUp} />}
+      {handoffOpen && selected && <HandoffDialog customer={selected} salespeople={salespeople} onClose={() => setHandoffOpen(false)} onSubmit={createHandoff} />}
     </section>
   )
+}
+
+function HandoffDialog({ customer, salespeople, onClose, onSubmit }: { customer: Customer; salespeople: { id: string; name: string }[]; onClose: () => void; onSubmit: (salespersonId: string, summary: string, appointmentAt?: string) => void }) {
+  const [salespersonId, setSalespersonId] = useState('')
+  const [summary, setSummary] = useState('')
+  const [appointmentAt, setAppointmentAt] = useState('')
+  return <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className="followup-dialog handoff-dialog" role="dialog" aria-modal="true" aria-labelledby="handoff-title"><header><div><p>客服转交销售</p><h2 id="handoff-title">客户交接 · {customer.name}</h2></div><button className="icon-button" onClick={onClose} aria-label="关闭"><X size={20}/></button></header><form onSubmit={(event) => { event.preventDefault(); onSubmit(salespersonId, summary.trim(), appointmentAt || undefined) }}><label>接收销售 *<select required value={salespersonId} onChange={(event) => setSalespersonId(event.target.value)}><option value="">请选择销售</option>{salespeople.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>邀约到店时间<input type="datetime-local" value={appointmentAt} onChange={(event) => setAppointmentAt(event.target.value)}/></label><label>交接摘要 *<textarea required rows={4} value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="填写客户需求、预算、意向产品、已沟通重点和下一步建议"/></label><footer><button type="button" className="secondary-button" onClick={onClose}>取消</button><button className="primary-button" type="submit">确认转交</button></footer></form></section></div>
 }
 
 type DesignTaskDraft = Omit<DesignTask, 'id' | 'customerId' | 'customerName' | 'salesperson' | 'status' | 'solutionFiles' | 'createdAt' | 'updatedAt'>

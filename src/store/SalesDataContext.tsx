@@ -8,6 +8,7 @@ const STORAGE_KEY = 'shangpinju.customer-followup.v1'
 interface SalesState { customers: Customer[]; followUps: FollowUp[]; designTasks: DesignTask[] }
 interface SalesDataValue extends SalesState {
   designers: { id: string; name: string }[]
+  salespeople: { id: string; name: string }[]
   addCustomers: (items: Customer[]) => void
   addFollowUp: (item: FollowUp) => void
   addDesignTask: (item: DesignTask) => void
@@ -41,6 +42,7 @@ export function SalesDataProvider({ children }: { children: ReactNode }) {
   const [auditEvents, setAuditEvents] = useState<RemoteAuditEvent[]>([])
   const [integrationSettings, setIntegrationSettings] = useState<Record<string, Record<string, unknown>>>({})
   const [designers, setDesigners] = useState<{ id: string; name: string }[]>([{ id: 'demo-designer', name: '林设计师' }])
+  const [salespeople, setSalespeople] = useState<{ id: string; name: string }[]>([{ id: 'demo-sales', name: '林晓' }])
   const hydrated = useRef(false)
 
   useEffect(() => {
@@ -64,7 +66,8 @@ export function SalesDataProvider({ children }: { children: ReactNode }) {
         } else {
           await salesApi.putState(state)
         }
-        try { const result = await salesApi.getDesigners(); setDesigners(result.designers.map((item) => ({ id: item.id, name: item.name }))) } catch { /* Keep local fallback when designer directory is unavailable. */ }
+        try { const result = await salesApi.getDesigners(); if (result.designers.length) setDesigners(result.designers.map((item) => ({ id: item.id, name: item.name }))) } catch { /* Keep local fallback when designer directory is unavailable. */ }
+        try { const result = await salesApi.getSalespeople(); if (result.salespeople.length) setSalespeople(result.salespeople.map((item) => ({ id: item.id, name: item.name }))) } catch { /* Keep local fallback when salesperson directory is unavailable. */ }
         try { await refreshAdminData() } catch { /* Admin-only data is unavailable to employee roles. */ }
         if (active) setServerStatus('connected')
       } catch {
@@ -114,7 +117,7 @@ export function SalesDataProvider({ children }: { children: ReactNode }) {
     setIntegrationSettings(result.integrations)
     await refreshAdminData()
   }, [refreshAdminData])
-  const value = useMemo(() => ({ ...state, designers, addCustomers, addFollowUp, addDesignTask, updateDesignTask, replaceState, updateCustomer, serverStatus, auditEvents, integrationSettings, refreshAdminData, saveIntegrations }), [addCustomers, addDesignTask, addFollowUp, auditEvents, designers, integrationSettings, refreshAdminData, replaceState, saveIntegrations, serverStatus, state, updateCustomer, updateDesignTask])
+  const value = useMemo(() => ({ ...state, designers, salespeople, addCustomers, addFollowUp, addDesignTask, updateDesignTask, replaceState, updateCustomer, serverStatus, auditEvents, integrationSettings, refreshAdminData, saveIntegrations }), [addCustomers, addDesignTask, addFollowUp, auditEvents, designers, integrationSettings, refreshAdminData, replaceState, salespeople, saveIntegrations, serverStatus, state, updateCustomer, updateDesignTask])
 
   return <SalesDataContext.Provider value={value}>{children}</SalesDataContext.Provider>
 }
