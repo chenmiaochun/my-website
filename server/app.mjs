@@ -118,6 +118,9 @@ export function createApiServer({ database, maxBodyBytes = 1_048_576, corsOrigin
       }
       const statusMatch = url.pathname.match(/^\/api\/accounts\/([^/]+)\/status$/)
       if (req.method === 'PATCH' && statusMatch) { requireManager(); const body = await readJson(req, maxBodyBytes); return send(200, { account: database.setAccountActive(decodeURIComponent(statusMatch[1]), Boolean(body.active)) }) }
+      const accountMatch = url.pathname.match(/^\/api\/accounts\/([^/]+)$/)
+      if (req.method === 'PATCH' && accountMatch) { requireManager(); try { return send(200, { account: database.updateAccount(decodeURIComponent(accountMatch[1]), await readJson(req, maxBodyBytes)) }) } catch (error) { throw new ApiError(String(error?.message).includes('UNIQUE') ? 409 : 400, 'ACCOUNT_INVALID', 'Account details are invalid or already used') } }
+      if (req.method === 'DELETE' && accountMatch) { requireManager(); if (decodeURIComponent(accountMatch[1]) === session.account.id) throw new ApiError(400, 'ACCOUNT_INVALID', 'You cannot delete the account currently in use'); try { database.deleteAccount(decodeURIComponent(accountMatch[1])); return send(204) } catch { throw new ApiError(400, 'ACCOUNT_INVALID', 'This account cannot be deleted') } }
       const resetMatch = url.pathname.match(/^\/api\/accounts\/([^/]+)\/reset-password$/)
       if (req.method === 'POST' && resetMatch) { requireManager(); const body = await readJson(req, maxBodyBytes); database.resetAccountPassword(decodeURIComponent(resetMatch[1]), body.password); return send(200, { ok: true }) }
       if (req.method === 'GET' && url.pathname === '/api/state') return send(200, database.getState())

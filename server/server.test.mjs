@@ -41,6 +41,10 @@ test('manager can create, disable and reset accounts', async () => {
   assert.equal(disabled.status, 200); assert.equal(disabled.body.account.active, false)
   const reset = await json(`/api/accounts/${created.body.account.id}/reset-password`, { method: 'POST', body: JSON.stringify({ password: 'new-designer-pass-123' }) })
   assert.equal(reset.status, 200); assert.equal(reset.body.ok, true)
+  const updated = await json(`/api/accounts/${created.body.account.id}`, { method: 'PATCH', body: JSON.stringify({ username: 'designer2', name: '设计二', role: 'designer', phone: '13800138000' }) })
+  assert.equal(updated.status, 200); assert.equal(updated.body.account.phone, '13800138000')
+  const removed = await json(`/api/accounts/${created.body.account.id}`, { method: 'DELETE' })
+  assert.equal(removed.status, 204)
 })
 
 test('manager can register operations and aftersales employees', async () => {

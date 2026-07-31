@@ -35,7 +35,7 @@ export const ROLE_LABELS: Record<TeamRole, string> = {
 }
 
 export const PERMISSION_LABELS: Record<AccessPermission, string> = {
-  'store.analytics': '全店经营分析',
+  'store.analytics': '全库经营分析',
   coaching: '销售辅导',
   'data.manage': '数据管理',
   'members.manage': '成员管理',
@@ -53,7 +53,7 @@ const ROLE_PERMISSIONS: Record<TeamRole, ReadonlySet<AccessPermission>> = {
   manager: new Set(ALL_PERMISSIONS),
   sales: new Set(['customers.own', 'tasks.own', 'conversation.analysis', 'sop']),
   designer: new Set(['customers.design']),
-  operations: new Set(['store.analytics', 'customers.own', 'tasks.own', 'conversation.analysis', 'revenue.summary']),
+  operations: new Set(['store.analytics', 'customers.own', 'tasks.own', 'conversation.analysis', 'sop', 'revenue.summary']),
   aftersales: new Set(['customers.own', 'tasks.own', 'conversation.analysis', 'sop']),
 }
 

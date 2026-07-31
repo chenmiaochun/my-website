@@ -99,6 +99,8 @@ export class SalesDatabase {
       CREATE INDEX IF NOT EXISTS auth_sessions_account_idx ON auth_sessions(account_id);
       CREATE INDEX IF NOT EXISTS auth_sessions_expiry_idx ON auth_sessions(expires_at);
     `)
+    const accountColumns = this.db.prepare('PRAGMA table_info(auth_accounts)').all().map(column => column.name)
+    if (!accountColumns.includes('phone')) this.db.exec('ALTER TABLE auth_accounts ADD COLUMN phone TEXT')
     this.statements = {
       getState: this.db.prepare('SELECT value, updated_at FROM app_state WHERE id = 1'),
       putState: this.db.prepare(`INSERT INTO app_state(id, value, updated_at) VALUES(1, ?, ?)
@@ -118,9 +120,12 @@ export class SalesDatabase {
       accountByUsername: this.db.prepare('SELECT * FROM auth_accounts WHERE username = ? COLLATE NOCASE'),
       accountById: this.db.prepare('SELECT * FROM auth_accounts WHERE id = ?'),
       listAccounts: this.db.prepare('SELECT * FROM auth_accounts ORDER BY created_at'),
-      insertAccount: this.db.prepare('INSERT INTO auth_accounts(id, username, password_hash, name, role, active, must_change_password, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)'),
+      insertAccount: this.db.prepare('INSERT INTO auth_accounts(id, username, password_hash, name, role, active, must_change_password, created_at, updated_at, phone) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
+      updateAccount: this.db.prepare('UPDATE auth_accounts SET username = ?, name = ?, role = ?, phone = ?, updated_at = ? WHERE id = ?'),
       updateAccountStatus: this.db.prepare('UPDATE auth_accounts SET active = ?, updated_at = ? WHERE id = ?'),
       updateAccountPassword: this.db.prepare('UPDATE auth_accounts SET password_hash = ?, must_change_password = 1, updated_at = ? WHERE id = ?'),
+      deleteAccount: this.db.prepare('DELETE FROM auth_accounts WHERE id = ?'),
+      countActiveManagers: this.db.prepare("SELECT COUNT(*) AS count FROM auth_accounts WHERE role = 'manager' AND active = 1"),
       deleteAccountSessions: this.db.prepare('DELETE FROM auth_sessions WHERE account_id = ?'),
       insertSession: this.db.prepare('INSERT INTO auth_sessions(token_hash, account_id, expires_at, created_at, last_seen_at) VALUES(?, ?, ?, ?, ?)'),
       getSession: this.db.prepare(`SELECT s.token_hash, s.expires_at, a.* FROM auth_sessions s JOIN auth_accounts a ON a.id = s.account_id WHERE s.token_hash = ?`),
@@ -164,7 +169,7 @@ export class SalesDatabase {
     return this.getIntegrations()
   }
   publicAccount(row) {
-    return { id: row.id, username: row.username, name: row.name, role: row.role, active: Boolean(row.active), mustChangePassword: Boolean(row.must_change_password) }
+    return { id: row.id, username: row.username, name: row.name, role: row.role, phone: row.phone || '', active: Boolean(row.active), mustChangePassword: Boolean(row.must_change_password), createdAt: row.created_at, lastLoginAt: null }
   }
   ensureInitialAdmin({ username, password, name = '店长' }) {
     if (Number(this.statements.countAccounts.get().count) > 0) return null
@@ -172,20 +177,28 @@ export class SalesDatabase {
     if (password.length < 10) throw new Error('Initial administrator password must be at least 10 characters')
     const at = this.now(), id = `account-${randomBytes(8).toString('hex')}`
     this.transaction(() => {
-      this.statements.insertAccount.run(id, username.trim(), hashPassword(password), name, 'manager', 1, 1, at, at)
+      this.statements.insertAccount.run(id, username.trim(), hashPassword(password), name, 'manager', 1, 1, at, at, '')
       this.record('create', 'auth_account', { accountId: id, role: 'manager', initial: true })
     })
     return this.publicAccount(this.statements.accountById.get(id))
   }
-  createAccount({ username, password, name, role, active = true, mustChangePassword = true }) {
+  createAccount({ username, password, name, role, phone = '', active = true, mustChangePassword = true }) {
     if (!['manager', 'sales', 'designer', 'operations', 'aftersales'].includes(role)) throw new Error('Invalid account role')
-    if (!username?.trim() || !name?.trim() || String(password || '').length < 10) throw new Error('Invalid account details')
+    if (!username?.trim() || !name?.trim() || !(/^\d{6}$/.test(String(password || '')) || String(password || '').length >= 10)) throw new Error('Invalid account details')
     const at = this.now(), id = `account-${randomBytes(8).toString('hex')}`
-    this.statements.insertAccount.run(id, username.trim(), hashPassword(password), name.trim(), role, active ? 1 : 0, mustChangePassword ? 1 : 0, at, at)
+    this.statements.insertAccount.run(id, username.trim(), hashPassword(password), name.trim(), role, active ? 1 : 0, mustChangePassword ? 1 : 0, at, at, String(phone || '').trim())
     this.record('create', 'auth_account', { accountId: id, role })
     return this.publicAccount(this.statements.accountById.get(id))
   }
   listAccounts() { return this.statements.listAccounts.all().map(row => this.publicAccount(row)) }
+  updateAccount(id, { username, name, role, phone = '' }) {
+    if (!['manager', 'sales', 'designer', 'operations'].includes(role) || !username?.trim() || !name?.trim()) throw new Error('Invalid account details')
+    const at = this.now()
+    const result = this.statements.updateAccount.run(username.trim(), name.trim(), role, String(phone || '').trim(), at, id)
+    if (!result.changes) throw new Error('Account not found')
+    this.record('update', 'auth_account', { accountId: id, role })
+    return this.publicAccount(this.statements.accountById.get(id))
+  }
   setAccountActive(id, active) {
     const at = this.now()
     this.transaction(() => {
@@ -197,7 +210,7 @@ export class SalesDatabase {
     return this.publicAccount(this.statements.accountById.get(id))
   }
   resetAccountPassword(id, password) {
-    if (String(password || '').length < 10) throw new Error('Password must be at least 10 characters')
+    if (!(/^\d{6}$/.test(String(password || '')) || String(password || '').length >= 10)) throw new Error('Password must be 6 digits')
     const at = this.now()
     this.transaction(() => {
       const result = this.statements.updateAccountPassword.run(hashPassword(password), at, id)
@@ -205,6 +218,13 @@ export class SalesDatabase {
       this.statements.deleteAccountSessions.run(id)
       this.record('reset_password', 'auth_account', { accountId: id })
     })
+    return true
+  }
+  deleteAccount(id) {
+    const account = this.statements.accountById.get(id)
+    if (!account) throw new Error('Account not found')
+    if (account.role === 'manager' && account.active && Number(this.statements.countActiveManagers.get().count) <= 1) throw new Error('Last manager cannot be deleted')
+    this.transaction(() => { this.statements.deleteAccountSessions.run(id); this.statements.deleteAccount.run(id); this.record('delete', 'auth_account', { accountId: id }) })
     return true
   }
   authenticate(username, password) {

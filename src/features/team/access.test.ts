@@ -27,6 +27,7 @@ describe('team role access', () => {
 
   it('supports operations and aftersales store workflows', () => {
     expect(hasPermission('operations', 'store.analytics')).toBe(true)
+    expect(hasPermission('operations', 'sop')).toBe(true)
     expect(canViewRevenueSummary('operations')).toBe(true)
     expect(hasPermission('aftersales', 'tasks.own')).toBe(true)
     expect(canAccessCustomer({ id: 'ops-1', name: '赵运营', role: 'operations' }, {})).toBe(true)
