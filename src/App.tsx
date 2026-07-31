@@ -11,7 +11,7 @@ import { LeadsPage } from './features/leads'
 import { TaskCenterPage } from './features/tasks'
 import { SalesSopPage } from './features/sop'
 import { DataAdminPage, type ConnectionStatus } from './features/data-admin'
-import { RoleProvider, ROLE_LABELS, TeamAccessPage, canAccessCustomer, useRoleAccess, type AccessPermission, type TeamMember } from './features/team'
+import { RoleProvider, ROLE_LABELS, TeamAccessPage, canAccessCustomer, getDefaultRoute, useRoleAccess, type AccessPermission, type TeamMember } from './features/team'
 import { SalesDataProvider, useSalesData } from './store/SalesDataContext'
 import { LoginPage } from './auth/LoginPage'
 import { useAuth } from './auth/AuthContext'
@@ -39,7 +39,12 @@ function MorePage({ items }: { items: NavItem[] }) {
 
 function Allowed({ permission, children }: { permission: AccessPermission; children: ReactNode }) {
   const access = useRoleAccess()
-  return access.can(permission) ? children : <Navigate to="/more" replace />
+  return access.can(permission) ? children : <Navigate to={getDefaultRoute(access.identity)} replace />
+}
+
+function CustomerAllowed({ children }: { children: ReactNode }) {
+  const access = useRoleAccess()
+  return access.can('customers.own') || access.can('customers.design') ? children : <Navigate to={getDefaultRoute(access.identity)} replace />
 }
 
 function AppShell({ activeMember }: { activeMember: TeamMember }) {
@@ -84,7 +89,7 @@ function AppShell({ activeMember }: { activeMember: TeamMember }) {
         <div className="app-content">
           <Routes>
             <Route path="/dashboard" element={<Allowed permission="store.analytics"><ManagerDashboard customers={sales.customers} followUps={sales.followUps} /></Allowed>} />
-            <Route path="/customers" element={<CustomersPage customers={visibleCustomers} followUps={visibleFollowUps} designers={sales.designers} salespeople={sales.salespeople} activeMember={activeMember} onStateChange={mergeVisibleState} onAddDesignTask={(task) => { sales.addDesignTask(task); sales.updateCustomer(task.customerId, { designerId: task.designerId, designer: task.designerName }) }} />} />
+            <Route path="/customers" element={<CustomerAllowed><CustomersPage customers={visibleCustomers} followUps={visibleFollowUps} designers={sales.designers} salespeople={sales.salespeople} activeMember={activeMember} onStateChange={mergeVisibleState} onAddDesignTask={(task) => { sales.addDesignTask(task); sales.updateCustomer(task.customerId, { designerId: task.designerId, designer: task.designerName }) }} /></CustomerAllowed>} />
             <Route path="/tasks" element={<Allowed permission="tasks.own"><TaskCenterPage customers={visibleCustomers} followUps={visibleFollowUps} designTasks={sales.designTasks} activeMember={activeMember} onCompleteTask={sales.addFollowUp} onUpdateDesignTask={sales.updateDesignTask} /></Allowed>} />
             <Route path="/leads" element={<Allowed permission="customers.own"><LeadsPage customers={visibleCustomers} onAddCustomers={sales.addCustomers} /></Allowed>} />
             <Route path="/quality" element={<Allowed permission="store.analytics"><AIQualityPage customers={sales.customers} followUps={sales.followUps} /></Allowed>} />
@@ -95,7 +100,7 @@ function AppShell({ activeMember }: { activeMember: TeamMember }) {
             <Route path="/team" element={<Allowed permission="members.manage"><TeamAccessPage /></Allowed>} />
             <Route path="/data-admin" element={<Allowed permission="data.manage"><DataAdminPage customers={sales.customers} followUps={sales.followUps} auditEvents={sales.auditEvents.map((item) => ({ id: String(item.id), action: `${item.action} ${item.resource}`, at: item.createdAt, detail: JSON.stringify(item.details) }))} connectionStatus={connectionStatus} onRestoreBackup={(backup) => sales.replaceState({ customers: backup.customers, followUps: backup.followUps, designTasks: sales.designTasks })} integrationSettings={{ corpId: String(wechat.corpId ?? ''), agentId: String(wechat.agentId ?? ''), secretConfigured: Boolean(wechat.secretConfigured || wechat.secret) }} onSaveIntegration={async (settings) => sales.saveIntegrations({ ...sales.integrationSettings, wechat: { ...wechat, corpId: settings.corpId, agentId: settings.agentId, ...(settings.secret ? { secret: settings.secret } : {}), secretConfigured: Boolean(settings.secret || wechat.secretConfigured || wechat.secret), status: 'pending' } })} /></Allowed>} />
             <Route path="/more" element={<MorePage items={visibleNavigation} />} />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            <Route path="*" element={<Navigate to={getDefaultRoute(activeMember)} replace />} />
           </Routes>
         </div>
       </section>
@@ -118,5 +123,5 @@ export function App() {
   if (auth.status === 'loading') return <main className="auth-loading">正在验证登录状态...</main>
   if (auth.status === 'anonymous') return <Routes><Route path="/login" element={<LoginPage />} /><Route path="*" element={<Navigate to="/login" state={{ from: location.pathname }} replace />} /></Routes>
   const activeMember = auth.user!
-  return <SalesDataProvider><RoleProvider identity={activeMember}><Routes><Route path="/login" element={<Navigate to="/dashboard" replace />} /><Route path="*" element={<AppShell activeMember={activeMember} />} /></Routes></RoleProvider></SalesDataProvider>
+  return <SalesDataProvider><RoleProvider identity={activeMember}><Routes><Route path="/login" element={<Navigate to={getDefaultRoute(activeMember)} replace />} /><Route path="*" element={<AppShell activeMember={activeMember} />} /></Routes></RoleProvider></SalesDataProvider>
 }

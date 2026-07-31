@@ -56,7 +56,7 @@ const ROLE_PERMISSIONS: Record<TeamRole, ReadonlySet<AccessPermission>> = {
   manager: new Set(ALL_PERMISSIONS),
   sales: new Set(['customers.own', 'tasks.own', 'conversation.analysis', 'sop']),
   designer: new Set(['customers.design', 'tasks.own']),
-  operations: new Set(['store.analytics', 'customers.own', 'tasks.own', 'conversation.analysis', 'sop', 'revenue.summary']),
+  operations: new Set(['customers.own', 'tasks.own', 'conversation.analysis', 'sop']),
   aftersales: new Set(['customers.own', 'tasks.own', 'conversation.analysis', 'sop']),
 }
 
@@ -66,6 +66,18 @@ export function hasPermission(role: TeamRole, permission: AccessPermission): boo
 
 export function getRolePermissions(role: TeamRole): AccessPermission[] {
   return ALL_PERMISSIONS.filter((permission) => hasPermission(role, permission))
+}
+
+export function hasIdentityPermission(identity: RoleIdentity, permission: AccessPermission): boolean {
+  return hasPermission(identity.role, permission)
+    || Boolean(identity.role === 'sales' && identity.canDesign && permission === 'customers.design')
+}
+
+export function getDefaultRoute(identity: RoleIdentity): string {
+  if (hasIdentityPermission(identity, 'store.analytics')) return '/dashboard'
+  if (hasIdentityPermission(identity, 'customers.own') || hasIdentityPermission(identity, 'customers.design')) return '/customers'
+  if (hasIdentityPermission(identity, 'tasks.own')) return '/tasks'
+  return '/more'
 }
 
 export function canAccessCustomer(identity: RoleIdentity, customer: CustomerAccessSubject): boolean {

@@ -45,7 +45,7 @@ export function TaskCenterPage({ customers, followUps, onCompleteTask, now = new
   const counts = useMemo(() => Object.fromEntries(categories.map(({ id }) => [id, tasks.filter((task) => task.category === id).length])) as Record<TaskCategory, number>, [tasks])
   const visible = tasks.filter((task) => task.category === category && (owner === '全部' || task.customer.salesperson === owner) && (priority === '全部' || task.priority === priority))
   const groups = groupTasksBySchedule(visible)
-  const visibleDesignTasks = designTasks.filter((task) => !activeMember || activeMember.role === 'manager' || activeMember.role === 'operations' || task.designerId === activeMember.id || task.designerName === activeMember.name || task.salesperson === activeMember.name)
+  const visibleDesignTasks = designTasks.filter((task) => !activeMember || activeMember.role === 'manager' || task.designerId === activeMember.id || task.designerName === activeMember.name || task.salesperson === activeMember.name)
 
   return <section className="task-center" aria-label="跟进任务中心">
     <header className="task-header">

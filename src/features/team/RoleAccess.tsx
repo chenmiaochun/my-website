@@ -1,5 +1,5 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
-import { canAccessCustomer, hasPermission, type AccessPermission, type CustomerAccessSubject, type RoleIdentity, type TeamRole } from './access'
+import { canAccessCustomer, hasIdentityPermission, type AccessPermission, type CustomerAccessSubject, type RoleIdentity, type TeamRole } from './access'
 
 export interface RoleAccessValue {
   identity: RoleIdentity
@@ -21,9 +21,9 @@ export function RoleProvider({ identity, role = 'sales', children }: RoleProvide
   const value = useMemo<RoleAccessValue>(() => ({
     identity: resolved,
     role: resolved.role,
-    can: (permission) => hasPermission(resolved.role, permission) || Boolean(resolved.canDesign && permission === 'customers.design'),
+    can: (permission) => hasIdentityPermission(resolved, permission),
     canAccessCustomer: (customer) => canAccessCustomer(resolved, customer),
-  }), [resolved.id, resolved.name, resolved.role])
+  }), [resolved.id, resolved.name, resolved.role, resolved.canDesign])
 
   return <RoleAccessContext.Provider value={value}>{children}</RoleAccessContext.Provider>
 }

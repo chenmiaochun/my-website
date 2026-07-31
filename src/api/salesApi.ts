@@ -58,7 +58,12 @@ export const salesApi = {
   getCurrentUser: <T>() => {
     if (!STATIC_DEMO) return request<{ user: T }>('/auth/me')
     const value = sessionStorage.getItem(STATIC_SESSION_KEY); if (!value) return Promise.reject(new ApiError(401, 'API 401'))
-    return Promise.resolve({ user: JSON.parse(value) as T })
+    const session = JSON.parse(value) as RemoteAccount
+    const account = loadStaticAccounts().find((item) => item.id === session.id && item.active)
+    if (!account) { sessionStorage.removeItem(STATIC_SESSION_KEY); return Promise.reject(new ApiError(401, 'API 401')) }
+    const user = publicStaticAccount(account) as T
+    sessionStorage.setItem(STATIC_SESSION_KEY, JSON.stringify(user))
+    return Promise.resolve({ user })
   },
   login: <T>(username: string, password: string) => {
     if (!STATIC_DEMO) return request<{ user: T }>('/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) })
