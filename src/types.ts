@@ -30,8 +30,21 @@ export interface Customer {
   visitPeriod?: string
   vehicleBrand?: string
   notes?: string
+  avatarDataUrl?: string
+  initialQuote?: number
+  quoteDescription?: string
+  discountType?: string
+  discountDetails?: string
+  businessFiles?: CustomerFile[]
   lastContactAt: string
   nextFollowUpAt?: string
   createdAt: string
   lostReason?: string
+}
+
+export interface CustomerFile {
+  id: string
+  name: string
+  type: string
+  size: number
 }
