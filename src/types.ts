@@ -28,6 +28,8 @@ export interface Customer {
   concerns: string[]
   cityArea?: string
   visitPeriod?: string
+  vehicleBrand?: string
+  notes?: string
   lastContactAt: string
   nextFollowUpAt?: string
   createdAt: string
