@@ -26,9 +26,10 @@ export interface Customer {
   budget: string
   renovationProgress: string
   concerns: string[]
+  cityArea?: string
+  visitPeriod?: string
   lastContactAt: string
   nextFollowUpAt?: string
   createdAt: string
   lostReason?: string
 }
-

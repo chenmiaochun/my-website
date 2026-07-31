@@ -5,8 +5,17 @@ import { CSV_HEADERS, csvRowToCustomer, customerCsv, previewCustomerCsv, templat
 import './leads.css'
 
 export interface LeadsPageProps { customers: Customer[]; onAddCustomers: (customers: Customer[]) => void }
-type FormState = Omit<Customer, 'id' | 'stage' | 'lastContactAt' | 'createdAt' | 'products' | 'concerns' | 'expectedAmount'> & { expectedAmount: string; products: string; concerns: string }
-const initialForm: FormState = { name: '', phone: '', source: '', salesperson: '', intent: '中', expectedAmount: '', products: '', style: '', budget: '', renovationProgress: '', concerns: '', nextFollowUpAt: '' }
+type FormState = { name: string; phone: string; source: string; salesperson: string; intent: Customer['intent']; products: string[]; style: string; budget: string; renovationProgress: string; concerns: string[]; cityArea: string; visitPeriod: string; nextFollowUpAt: string }
+const initialForm: FormState = { name: '', phone: '', source: '', salesperson: '', intent: '中', products: [], style: '', budget: '', renovationProgress: '', concerns: [], cityArea: '', visitPeriod: '', nextFollowUpAt: '' }
+const SOURCES = ['自然到店', '老客转介绍', '抖音', '视频号', '小红书', '大众点评', '其他']
+const CITY_AREAS = ['揭阳', '汕头', '潮州', '汕尾', '深圳', '其他地区']
+const VISIT_PERIODS = ['上午', '中午', '下午', '晚上', '未到店']
+const PRODUCTS = ['沙发', '茶台/茶桌', '餐桌椅', '床', '柜类', '全屋家具', '软装饰品']
+const STYLES = ['现代原木', '意式极简', '现代轻奢', '中古', '奶油风', '新中式', '暂未确定']
+const BUDGETS = ['3万以内', '3-5万', '5-8万', '8-12万', '12-20万', '20万以上', '暂未确定']
+const BUDGET_AMOUNTS: Record<string, number> = { '3万以内': 30000, '3-5万': 50000, '5-8万': 80000, '8-12万': 120000, '12-20万': 200000, '20万以上': 250000, '暂未确定': 0 }
+const RENOVATION_PROGRESS = ['毛坯/未开工', '水电施工', '木工/泥工', '油漆阶段', '硬装收尾', '软装进场', '已入住', '未交房/时间未定']
+const CONCERNS = ['价格预算', '款式风格', '尺寸方案', '材质环保', '交付时间', '售后保障', '家人意见']
 
 export function LeadsPage({ customers, onAddCustomers }: LeadsPageProps) {
   const [form, setForm] = useState(initialForm)
@@ -16,12 +25,13 @@ export function LeadsPage({ customers, onAddCustomers }: LeadsPageProps) {
   const [notice, setNotice] = useState('')
   const fileInput = useRef<HTMLInputElement>(null)
   const validRows = preview.filter((row) => row.errors.length === 0)
+  const salespersonOptions = [...new Set(customers.map((customer) => customer.salesperson).filter(Boolean))]
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) { setForm((current) => ({ ...current, [key]: value })) }
   function submit(event: FormEvent) {
     event.preventDefault()
     const now = new Date()
-    const customer: Customer = { id: `lead-${now.getTime()}`, name: form.name.trim(), phone: form.phone.trim(), source: form.source.trim(), salesperson: form.salesperson.trim(), stage: '新线索', intent: form.intent, expectedAmount: Number(form.expectedAmount), products: split(form.products), style: form.style.trim(), budget: form.budget.trim(), renovationProgress: form.renovationProgress.trim(), concerns: split(form.concerns), lastContactAt: now.toISOString(), nextFollowUpAt: form.nextFollowUpAt ? new Date(form.nextFollowUpAt).toISOString() : undefined, createdAt: now.toISOString().slice(0, 10) }
+    const customer: Customer = { id: `lead-${now.getTime()}`, name: form.name.trim(), phone: form.phone.trim(), source: form.source, salesperson: form.salesperson, stage: '新线索', intent: form.intent, expectedAmount: BUDGET_AMOUNTS[form.budget] ?? 0, products: form.products, style: form.style, budget: form.budget, renovationProgress: form.renovationProgress, concerns: form.concerns, cityArea: form.cityArea, visitPeriod: form.visitPeriod, lastContactAt: now.toISOString(), nextFollowUpAt: form.nextFollowUpAt ? new Date(form.nextFollowUpAt).toISOString() : undefined, createdAt: now.toISOString().slice(0, 10) }
     onAddCustomers([customer]); setForm(initialForm); setNotice(`已新增客户：${customer.name}`)
   }
   async function selectFile(file?: File) {
@@ -51,15 +61,16 @@ export function LeadsPage({ customers, onAddCustomers }: LeadsPageProps) {
         <form className="lead-form" onSubmit={submit}>
           <Field label="姓名" required><input required value={form.name} onChange={(e) => update('name', e.target.value)} /></Field>
           <Field label="电话" required><input required type="tel" pattern="[+0-9][0-9 -]{5,19}" value={form.phone} onChange={(e) => update('phone', e.target.value)} /></Field>
-          <Field label="来源"><input value={form.source} onChange={(e) => update('source', e.target.value)} placeholder="如：小红书" /></Field>
-          <Field label="负责人" required><input required value={form.salesperson} onChange={(e) => update('salesperson', e.target.value)} /></Field>
-          <Field label="意向"><select value={form.intent} onChange={(e) => update('intent', e.target.value as Customer['intent'])}><option>高</option><option>中</option><option>低</option></select></Field>
-          <Field label="预计金额" required><input required min="0" type="number" value={form.expectedAmount} onChange={(e) => update('expectedAmount', e.target.value)} /></Field>
-          <Field label="产品"><input value={form.products} onChange={(e) => update('products', e.target.value)} placeholder="多个用 | 分隔" /></Field>
-          <Field label="风格"><input value={form.style} onChange={(e) => update('style', e.target.value)} /></Field>
-          <Field label="预算"><input value={form.budget} onChange={(e) => update('budget', e.target.value)} /></Field>
-          <Field label="装修进度"><input value={form.renovationProgress} onChange={(e) => update('renovationProgress', e.target.value)} /></Field>
-          <Field label="关注点"><input value={form.concerns} onChange={(e) => update('concerns', e.target.value)} placeholder="多个用 | 分隔" /></Field>
+          <Field label="认知途径" required><ChoiceSelect required value={form.source} options={SOURCES} placeholder="请选择客户来源" onChange={(value) => update('source', value)} /></Field>
+          <Field label="所在城市" required><ChoiceSelect required value={form.cityArea} options={CITY_AREAS} placeholder="请选择城市" onChange={(value) => update('cityArea', value)} /></Field>
+          <Field label="到店时段"><ChoiceSelect value={form.visitPeriod} options={VISIT_PERIODS} placeholder="请选择" onChange={(value) => update('visitPeriod', value)} /></Field>
+          <Field label="负责人" required><ChoiceSelect required value={form.salesperson} options={salespersonOptions} placeholder="请选择销售" onChange={(value) => update('salesperson', value)} /></Field>
+          <Field label="客户意向"><ChoiceSelect value={form.intent} options={['高', '中', '低']} onChange={(value) => update('intent', value as Customer['intent'])} /></Field>
+          <Field label="预算范围" required><ChoiceSelect required value={form.budget} options={BUDGETS} placeholder="请选择预算" onChange={(value) => update('budget', value)} /></Field>
+          <Field label="偏好风格"><ChoiceSelect value={form.style} options={STYLES} placeholder="请选择风格" onChange={(value) => update('style', value)} /></Field>
+          <Field label="装修进度" required><ChoiceSelect required value={form.renovationProgress} options={RENOVATION_PROGRESS} placeholder="请选择进度" onChange={(value) => update('renovationProgress', value)} /></Field>
+          <ChoiceGroup label="核心需求（可多选）" options={PRODUCTS} values={form.products} onChange={(values) => update('products', values)} />
+          <ChoiceGroup label="重点关注（可多选）" options={CONCERNS} values={form.concerns} onChange={(values) => update('concerns', values)} />
           <Field label="下次跟进"><input type="datetime-local" value={form.nextFollowUpAt} onChange={(e) => update('nextFollowUpAt', e.target.value)} /></Field>
           <button className="primary form-submit" type="submit"><Plus size={17} />新增客户</button>
         </form>
@@ -80,7 +91,8 @@ export function LeadsPage({ customers, onAddCustomers }: LeadsPageProps) {
 }
 
 function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) { return <label><span>{label}{required && <b> *</b>}</span>{children}</label> }
-function split(value: string) { return value.split(/[|、；;]/).map((item) => item.trim()).filter(Boolean) }
+function ChoiceSelect({ value, options, placeholder, required, onChange }: { value: string; options: string[]; placeholder?: string; required?: boolean; onChange: (value: string) => void }) { return <select required={required} value={value} onChange={(event) => onChange(event.target.value)}>{placeholder && <option value="">{placeholder}</option>}{options.map((option) => <option key={option} value={option}>{option}</option>)}</select> }
+function ChoiceGroup({ label, options, values, onChange }: { label: string; options: string[]; values: string[]; onChange: (values: string[]) => void }) { return <fieldset className="choice-group"><legend>{label}</legend><div>{options.map((option) => <label className={values.includes(option) ? 'selected' : ''} key={option}><input type="checkbox" checked={values.includes(option)} onChange={() => onChange(values.includes(option) ? values.filter((value) => value !== option) : [...values, option])} /><span>{option}</span></label>)}</div></fieldset> }
 function download(name: string, content: string) { const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8' })); const anchor = document.createElement('a'); anchor.href = url; anchor.download = name; anchor.click(); URL.revokeObjectURL(url) }
 
 export default LeadsPage
