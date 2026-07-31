@@ -3,6 +3,7 @@ import type { Customer, FollowUp } from '../types'
 const API_BASE = 'http://127.0.0.1:3001/api'
 const STATIC_DEMO = import.meta.env.VITE_STATIC_DEMO === 'true'
 const STATIC_ACCOUNTS_KEY = 'shangpinju.static-accounts.v1'
+const STATIC_SESSION_KEY = 'shangpinju.static-session.v1'
 
 export interface RemoteSalesState { customers: Customer[]; followUps: FollowUp[] }
 export interface RemoteAuditEvent { id: number; action: string; resource: string; details: Record<string, unknown>; createdAt: string }
@@ -24,11 +25,16 @@ export interface UpdateAccountInput { username: string; name: string; role: Acco
 const defaultStaticAccounts: RemoteAccount[] = [
   { id: 'static-manager', username: 'manager', name: '访客店长', role: 'manager', active: true, mustChangePassword: false, phone: '', createdAt: new Date().toISOString() },
 ]
+type StaticAccount = RemoteAccount & { password?: string }
 function loadStaticAccounts() {
-  try { const value = localStorage.getItem(STATIC_ACCOUNTS_KEY); if (value) return JSON.parse(value) as RemoteAccount[] } catch { /* Use demo account. */ }
-  return defaultStaticAccounts
+  try {
+    const value = localStorage.getItem(STATIC_ACCOUNTS_KEY)
+    if (value) return (JSON.parse(value) as StaticAccount[]).map((account) => ({ ...account, password: account.password ?? '123456' }))
+  } catch { /* Use demo account. */ }
+  return defaultStaticAccounts.map((account) => ({ ...account, password: '123456' }))
 }
-function saveStaticAccounts(accounts: RemoteAccount[]) { localStorage.setItem(STATIC_ACCOUNTS_KEY, JSON.stringify(accounts)); return accounts }
+function saveStaticAccounts(accounts: StaticAccount[]) { localStorage.setItem(STATIC_ACCOUNTS_KEY, JSON.stringify(accounts)); return accounts }
+function publicStaticAccount({ password: _password, ...account }: StaticAccount): RemoteAccount { return account }
 function staticAccountError(message: string, status = 400): never { throw new ApiError(status, message) }
 
 export class ApiError extends Error {
@@ -48,9 +54,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const salesApi = {
-  getCurrentUser: <T>() => request<{ user: T }>('/auth/me'),
-  login: <T>(username: string, password: string) => request<{ user: T }>('/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) }),
-  logout: () => request<void>('/auth/logout', { method: 'POST' }),
+  getCurrentUser: <T>() => {
+    if (!STATIC_DEMO) return request<{ user: T }>('/auth/me')
+    const value = sessionStorage.getItem(STATIC_SESSION_KEY); if (!value) return Promise.reject(new ApiError(401, 'API 401'))
+    return Promise.resolve({ user: JSON.parse(value) as T })
+  },
+  login: <T>(username: string, password: string) => {
+    if (!STATIC_DEMO) return request<{ user: T }>('/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) })
+    const account = loadStaticAccounts().find((item) => item.username.toLowerCase() === username.trim().toLowerCase() && item.password === password && item.active)
+    if (!account) return Promise.reject(new ApiError(401, '账号或密码错误'))
+    const user = publicStaticAccount(account) as T; sessionStorage.setItem(STATIC_SESSION_KEY, JSON.stringify(user)); return Promise.resolve({ user })
+  },
+  logout: () => { if (STATIC_DEMO) { sessionStorage.removeItem(STATIC_SESSION_KEY); return Promise.resolve() } return request<void>('/auth/logout', { method: 'POST' }) },
   health: () => request<{ ok: boolean }>('/health'),
   getState: () => request<{ value: Partial<RemoteSalesState>; updatedAt: string | null }>('/state'),
   putState: (state: RemoteSalesState) => request('/state', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(state) }),
@@ -59,24 +74,27 @@ export const salesApi = {
   putIntegrations: (integrations: Record<string, Record<string, unknown>>) => request<{ integrations: Record<string, Record<string, unknown>> }>('/integrations', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ integrations }) }),
   getMembers: <T>() => request<{ members: T[] }>('/members'),
   putMembers: <T>(members: T[]) => request<{ members: T[] }>('/members', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ members }) }),
-  getAccounts: () => STATIC_DEMO ? Promise.resolve({ accounts: loadStaticAccounts() }) : request<{ accounts: RemoteAccount[] }>('/accounts'),
+  getAccounts: () => STATIC_DEMO ? Promise.resolve({ accounts: loadStaticAccounts().map(publicStaticAccount) }) : request<{ accounts: RemoteAccount[] }>('/accounts'),
   createAccount: (input: CreateAccountInput) => {
     if (!STATIC_DEMO) return request<{ account: RemoteAccount }>('/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) })
     const accounts = loadStaticAccounts(); if (accounts.some((item) => item.username.toLowerCase() === input.username.toLowerCase())) staticAccountError('API 409', 409)
-    const { password: _password, ...profile } = input
-    const account: RemoteAccount = { ...profile, id: `static-${Date.now()}`, active: true, mustChangePassword: true, createdAt: new Date().toISOString() }
-    saveStaticAccounts([...accounts, account]); return Promise.resolve({ account })
+    const account: StaticAccount = { ...input, id: `static-${Date.now()}`, active: true, mustChangePassword: true, createdAt: new Date().toISOString() }
+    saveStaticAccounts([...accounts, account]); return Promise.resolve({ account: publicStaticAccount(account) })
   },
   updateAccount: (id: string, input: UpdateAccountInput) => {
     if (!STATIC_DEMO) return request<{ account: RemoteAccount }>(`/accounts/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) })
     const accounts = loadStaticAccounts(); const current = accounts.find((item) => item.id === id); if (!current) staticAccountError('API 400')
-    const account = { ...current, ...input }; saveStaticAccounts(accounts.map((item) => item.id === id ? account : item)); return Promise.resolve({ account })
+    const account = { ...current, ...input }; saveStaticAccounts(accounts.map((item) => item.id === id ? account : item)); return Promise.resolve({ account: publicStaticAccount(account) })
   },
   deleteAccount: (id: string) => STATIC_DEMO ? Promise.resolve(saveStaticAccounts(loadStaticAccounts().filter((item) => item.id !== id))).then(() => undefined) : request<void>(`/accounts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   setAccountActive: (id: string, active: boolean) => {
     if (!STATIC_DEMO) return request<{ account: RemoteAccount }>(`/accounts/${encodeURIComponent(id)}/status`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active }) })
     const accounts = loadStaticAccounts(); const current = accounts.find((item) => item.id === id); if (!current) staticAccountError('API 400')
-    const account = { ...current, active }; saveStaticAccounts(accounts.map((item) => item.id === id ? account : item)); return Promise.resolve({ account })
+    const account = { ...current, active }; saveStaticAccounts(accounts.map((item) => item.id === id ? account : item)); return Promise.resolve({ account: publicStaticAccount(account) })
   },
-  resetAccountPassword: (id: string, password: string) => STATIC_DEMO ? Promise.resolve({ ok: Boolean(id && password) }) : request<{ ok: boolean }>(`/accounts/${encodeURIComponent(id)}/reset-password`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) }),
+  resetAccountPassword: (id: string, password: string) => {
+    if (!STATIC_DEMO) return request<{ ok: boolean }>(`/accounts/${encodeURIComponent(id)}/reset-password`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) })
+    const accounts = loadStaticAccounts(); if (!accounts.some((item) => item.id === id)) staticAccountError('API 400')
+    saveStaticAccounts(accounts.map((item) => item.id === id ? { ...item, password, mustChangePassword: true } : item)); return Promise.resolve({ ok: true })
+  },
 }

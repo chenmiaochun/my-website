@@ -12,16 +12,13 @@ interface AuthValue {
 }
 
 const AuthContext = createContext<AuthValue | null>(null)
-const STATIC_DEMO = import.meta.env.VITE_STATIC_DEMO === 'true'
-const DEMO_MANAGER: TeamMember = { id: 'static-demo-manager', name: '访客店长', role: 'manager', active: true }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<TeamMember | null>(STATIC_DEMO ? DEMO_MANAGER : null)
-  const [status, setStatus] = useState<AuthValue['status']>(STATIC_DEMO ? 'authenticated' : 'loading')
+  const [user, setUser] = useState<TeamMember | null>(null)
+  const [status, setStatus] = useState<AuthValue['status']>('loading')
   const [notice, setNotice] = useState('')
 
   const checkSession = useCallback(async () => {
-    if (STATIC_DEMO) return
     try {
       const result = await salesApi.getCurrentUser<TeamMember>()
       setUser(result.user)
@@ -41,14 +38,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const login = useCallback(async (username: string, password: string) => {
-    if (STATIC_DEMO) { setUser(DEMO_MANAGER); setStatus('authenticated'); return }
     const result = await salesApi.login<TeamMember>(username, password)
     setUser(result.user)
     setStatus('authenticated')
     setNotice('')
   }, [])
   const logout = useCallback(async () => {
-    if (STATIC_DEMO) { setNotice('公开试用版保持登录状态'); return }
     try { await salesApi.logout() } finally { setUser(null); setStatus('anonymous'); setNotice('已安全退出') }
   }, [])
   const value = useMemo(() => ({ user, status, notice, login, logout, clearNotice: () => setNotice('') }), [login, logout, notice, status, user])
