@@ -1,11 +1,11 @@
-import type { Customer, FollowUp } from '../types'
+import type { Customer, DesignTask, FollowUp } from '../types'
 
 const API_BASE = 'http://127.0.0.1:3001/api'
 const STATIC_DEMO = import.meta.env.VITE_STATIC_DEMO === 'true'
 const STATIC_ACCOUNTS_KEY = 'shangpinju.static-accounts.v1'
 const STATIC_SESSION_KEY = 'shangpinju.static-session.v1'
 
-export interface RemoteSalesState { customers: Customer[]; followUps: FollowUp[] }
+export interface RemoteSalesState { customers: Customer[]; followUps: FollowUp[]; designTasks: DesignTask[] }
 export interface RemoteAuditEvent { id: number; action: string; resource: string; details: Record<string, unknown>; createdAt: string }
 export type AccountRole = 'manager' | 'sales' | 'designer' | 'operations' | 'aftersales'
 export interface RemoteAccount {
@@ -75,6 +75,7 @@ export const salesApi = {
   getMembers: <T>() => request<{ members: T[] }>('/members'),
   putMembers: <T>(members: T[]) => request<{ members: T[] }>('/members', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ members }) }),
   getAccounts: () => STATIC_DEMO ? Promise.resolve({ accounts: loadStaticAccounts().map(publicStaticAccount) }) : request<{ accounts: RemoteAccount[] }>('/accounts'),
+  getDesigners: () => STATIC_DEMO ? Promise.resolve({ designers: loadStaticAccounts().filter((item) => item.role === 'designer' && item.active).map(publicStaticAccount) }) : request<{ designers: RemoteAccount[] }>('/designers'),
   createAccount: (input: CreateAccountInput) => {
     if (!STATIC_DEMO) return request<{ account: RemoteAccount }>('/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) })
     const accounts = loadStaticAccounts(); if (accounts.some((item) => item.username.toLowerCase() === input.username.toLowerCase())) staticAccountError('API 409', 409)

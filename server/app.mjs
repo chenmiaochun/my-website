@@ -111,6 +111,7 @@ export function createApiServer({ database, maxBodyBytes = 1_048_576, corsOrigin
       if (req.method === 'GET' && url.pathname === '/api/auth/me') return send(200, { user: session.account, expiresAt: session.expiresAt })
       const requireManager = () => { if (session.account.role !== 'manager') throw new ApiError(403, 'FORBIDDEN', 'Manager permission is required') }
       if (req.method === 'GET' && url.pathname === '/api/accounts') { requireManager(); return send(200, { accounts: database.listAccounts() }) }
+      if (req.method === 'GET' && url.pathname === '/api/designers') return send(200, { designers: database.listAccounts().filter(item => item.role === 'designer' && item.active) })
       if (req.method === 'POST' && url.pathname === '/api/accounts') {
         requireManager()
         try { return send(201, { account: database.createAccount(await readJson(req, maxBodyBytes)) }) }

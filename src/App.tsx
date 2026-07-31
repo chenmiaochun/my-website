@@ -52,7 +52,7 @@ function AppShell({ activeMember }: { activeMember: TeamMember }) {
   const visibleFollowUps = sales.followUps.filter((item) => visibleIds.has(item.customerId))
   const mergeVisibleState = (next: { customers: typeof sales.customers; followUps: typeof sales.followUps }) => {
     const updates = new Map(next.customers.map((item) => [item.id, item]))
-    sales.replaceState({ customers: sales.customers.map((item) => updates.get(item.id) ?? item), followUps: [...next.followUps, ...sales.followUps.filter((item) => !visibleIds.has(item.customerId))] })
+    sales.replaceState({ customers: sales.customers.map((item) => updates.get(item.id) ?? item), followUps: [...next.followUps, ...sales.followUps.filter((item) => !visibleIds.has(item.customerId))], designTasks: sales.designTasks })
   }
   const wechat = sales.integrationSettings.wechat ?? {}
   const connectionStatus: ConnectionStatus = wechat.status === 'connected' ? 'connected' : wechat.corpId && wechat.agentId ? 'pending' : 'unconfigured'
@@ -84,8 +84,8 @@ function AppShell({ activeMember }: { activeMember: TeamMember }) {
         <div className="app-content">
           <Routes>
             <Route path="/dashboard" element={<Allowed permission="store.analytics"><ManagerDashboard customers={sales.customers} followUps={sales.followUps} /></Allowed>} />
-            <Route path="/customers" element={<CustomersPage customers={visibleCustomers} followUps={visibleFollowUps} onStateChange={mergeVisibleState} />} />
-            <Route path="/tasks" element={<Allowed permission="tasks.own"><TaskCenterPage customers={visibleCustomers} followUps={visibleFollowUps} onCompleteTask={sales.addFollowUp} /></Allowed>} />
+            <Route path="/customers" element={<CustomersPage customers={visibleCustomers} followUps={visibleFollowUps} designers={sales.designers} onStateChange={mergeVisibleState} onAddDesignTask={(task) => { sales.addDesignTask(task); sales.updateCustomer(task.customerId, { designerId: task.designerId, designer: task.designerName }) }} />} />
+            <Route path="/tasks" element={<Allowed permission="tasks.own"><TaskCenterPage customers={visibleCustomers} followUps={visibleFollowUps} designTasks={sales.designTasks} activeMember={activeMember} onCompleteTask={sales.addFollowUp} onUpdateDesignTask={sales.updateDesignTask} /></Allowed>} />
             <Route path="/leads" element={<Allowed permission="customers.own"><LeadsPage customers={visibleCustomers} onAddCustomers={sales.addCustomers} /></Allowed>} />
             <Route path="/quality" element={<Allowed permission="store.analytics"><AIQualityPage customers={sales.customers} followUps={sales.followUps} /></Allowed>} />
             <Route path="/conversation" element={<Allowed permission="conversation.analysis"><ConversationAnalyzerPage customers={visibleCustomers} onApplyAnalysis={(id, patch, followUp) => { sales.updateCustomer(id, patch); sales.addFollowUp(followUp) }} /></Allowed>} />
@@ -93,7 +93,7 @@ function AppShell({ activeMember }: { activeMember: TeamMember }) {
             <Route path="/coaching" element={<Allowed permission="coaching"><CoachingCenterPage customers={sales.customers} followUps={sales.followUps} /></Allowed>} />
             <Route path="/insights" element={<Allowed permission="store.analytics"><SalesInsightsPage customers={sales.customers} followUps={sales.followUps} /></Allowed>} />
             <Route path="/team" element={<Allowed permission="members.manage"><TeamAccessPage /></Allowed>} />
-            <Route path="/data-admin" element={<Allowed permission="data.manage"><DataAdminPage customers={sales.customers} followUps={sales.followUps} auditEvents={sales.auditEvents.map((item) => ({ id: String(item.id), action: `${item.action} ${item.resource}`, at: item.createdAt, detail: JSON.stringify(item.details) }))} connectionStatus={connectionStatus} onRestoreBackup={(backup) => sales.replaceState({ customers: backup.customers, followUps: backup.followUps })} integrationSettings={{ corpId: String(wechat.corpId ?? ''), agentId: String(wechat.agentId ?? ''), secretConfigured: Boolean(wechat.secretConfigured || wechat.secret) }} onSaveIntegration={async (settings) => sales.saveIntegrations({ ...sales.integrationSettings, wechat: { ...wechat, corpId: settings.corpId, agentId: settings.agentId, ...(settings.secret ? { secret: settings.secret } : {}), secretConfigured: Boolean(settings.secret || wechat.secretConfigured || wechat.secret), status: 'pending' } })} /></Allowed>} />
+            <Route path="/data-admin" element={<Allowed permission="data.manage"><DataAdminPage customers={sales.customers} followUps={sales.followUps} auditEvents={sales.auditEvents.map((item) => ({ id: String(item.id), action: `${item.action} ${item.resource}`, at: item.createdAt, detail: JSON.stringify(item.details) }))} connectionStatus={connectionStatus} onRestoreBackup={(backup) => sales.replaceState({ customers: backup.customers, followUps: backup.followUps, designTasks: sales.designTasks })} integrationSettings={{ corpId: String(wechat.corpId ?? ''), agentId: String(wechat.agentId ?? ''), secretConfigured: Boolean(wechat.secretConfigured || wechat.secret) }} onSaveIntegration={async (settings) => sales.saveIntegrations({ ...sales.integrationSettings, wechat: { ...wechat, corpId: settings.corpId, agentId: settings.agentId, ...(settings.secret ? { secret: settings.secret } : {}), secretConfigured: Boolean(settings.secret || wechat.secretConfigured || wechat.secret), status: 'pending' } })} /></Allowed>} />
             <Route path="/more" element={<MorePage items={visibleNavigation} />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

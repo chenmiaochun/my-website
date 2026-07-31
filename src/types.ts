@@ -18,6 +18,8 @@ export interface Customer {
   phone: string
   source: string
   salesperson: string
+  designer?: string
+  designerId?: string
   stage: CustomerStage
   intent: '高' | '中' | '低'
   expectedAmount: number
@@ -47,4 +49,27 @@ export interface CustomerFile {
   name: string
   type: string
   size: number
+}
+
+export type DesignTaskStatus = '待接收' | '设计中' | '待销售确认' | '客户沟通中' | '修改中' | '已完成'
+export type DesignTaskType = '平面布局' | '家具搭配' | '效果图' | '报价方案' | '方案修改' | '其他'
+
+export interface DesignTask {
+  id: string
+  customerId: string
+  customerName: string
+  salesperson: string
+  designerId: string
+  designerName: string
+  type: DesignTaskType
+  requirement: string
+  dueAt: string
+  priority: '普通' | '紧急'
+  status: DesignTaskStatus
+  referenceFiles: CustomerFile[]
+  solutionFiles: CustomerFile[]
+  solutionNote?: string
+  feedback?: string
+  createdAt: string
+  updatedAt: string
 }

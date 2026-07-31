@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   ArrowLeft,
   CalendarClock,
@@ -10,10 +10,12 @@ import {
   Search,
   SlidersHorizontal,
   UserRound,
+  FileUp,
+  Trash2,
   X,
 } from 'lucide-react'
 import { customers as seedCustomers, followUps as seedFollowUps } from '../../data'
-import type { Customer, CustomerStage, FollowUp } from '../../types'
+import type { Customer, CustomerFile, CustomerStage, DesignTask, DesignTaskType, FollowUp } from '../../types'
 import './customers.css'
 
 const STORAGE_KEY = 'shangpinju.customer-followup.v1'
@@ -28,6 +30,8 @@ export interface CustomersPageProps {
   customers?: Customer[]
   followUps?: FollowUp[]
   onStateChange?: (state: CustomerWorkspaceState) => void
+  designers?: { id: string; name: string }[]
+  onAddDesignTask?: (task: DesignTask) => void
 }
 type Channel = FollowUp['channel']
 
@@ -65,7 +69,7 @@ function isOverdue(value?: string) {
   return Boolean(value && new Date(value).getTime() < Date.now())
 }
 
-export function CustomersPage({ customers, followUps, onStateChange }: CustomersPageProps = {}) {
+export function CustomersPage({ customers, followUps, designers = [{ id: 'demo-designer', name: '林设计师' }], onStateChange, onAddDesignTask }: CustomersPageProps = {}) {
   const [localState, setLocalState] = useState<CustomerWorkspaceState>(readState)
   const controlled = customers !== undefined && followUps !== undefined && onStateChange !== undefined
   const state = controlled ? { customers, followUps } : localState
@@ -110,7 +114,7 @@ export function CustomersPage({ customers, followUps, onStateChange }: Customers
     }))
   }
 
-  function addFollowUp(data: Omit<FollowUp, 'id' | 'customerId' | 'salesperson'>) {
+  function addFollowUp(data: Omit<FollowUp, 'id' | 'customerId' | 'salesperson'>, design?: DesignTaskDraft) {
     if (!selected) return
     const record: FollowUp = {
       ...data,
@@ -126,6 +130,10 @@ export function CustomersPage({ customers, followUps, onStateChange }: Customers
         nextFollowUpAt: data.nextAt || undefined,
       } : customer),
     }))
+    if (design && onAddDesignTask) {
+      const now = new Date().toISOString()
+      onAddDesignTask({ ...design, id: `design-${Date.now()}`, customerId: selected.id, customerName: selected.name, salesperson: selected.salesperson, status: '待接收', solutionFiles: [], createdAt: now, updatedAt: now })
+    }
     setFormOpen(false)
   }
 
@@ -226,22 +234,33 @@ export function CustomersPage({ customers, followUps, onStateChange }: Customers
           ) : <div className="detail-placeholder"><UserRound size={34} /><strong>选择一位客户</strong><span>查看客户画像与跟进记录</span></div>}
         </main>
       </div>
-      {formOpen && selected && <FollowUpDialog customer={selected} onClose={() => setFormOpen(false)} onSubmit={addFollowUp} />}
+      {formOpen && selected && <FollowUpDialog customer={selected} designers={designers} onClose={() => setFormOpen(false)} onSubmit={addFollowUp} />}
     </section>
   )
 }
 
-function FollowUpDialog({ customer, onClose, onSubmit }: { customer: Customer; onClose: () => void; onSubmit: (data: Omit<FollowUp, 'id' | 'customerId' | 'salesperson'>) => void }) {
+type DesignTaskDraft = Omit<DesignTask, 'id' | 'customerId' | 'customerName' | 'salesperson' | 'status' | 'solutionFiles' | 'createdAt' | 'updatedAt'>
+
+function FollowUpDialog({ customer, designers, onClose, onSubmit }: { customer: Customer; designers: { id: string; name: string }[]; onClose: () => void; onSubmit: (data: Omit<FollowUp, 'id' | 'customerId' | 'salesperson'>, design?: DesignTaskDraft) => void }) {
   const [channel, setChannel] = useState<Channel>('微信')
   const [at, setAt] = useState(toLocalInput())
   const [content, setContent] = useState('')
   const [result, setResult] = useState('')
   const [nextAction, setNextAction] = useState('')
   const [nextAt, setNextAt] = useState('')
+  const [needsDesign, setNeedsDesign] = useState(false)
+  const [designerId, setDesignerId] = useState('')
+  const [designType, setDesignType] = useState<DesignTaskType>('效果图')
+  const [requirement, setRequirement] = useState('')
+  const [dueAt, setDueAt] = useState('')
+  const [designPriority, setDesignPriority] = useState<'普通' | '紧急'>('普通')
+  const [referenceFiles, setReferenceFiles] = useState<CustomerFile[]>([])
+  const referenceInput = useRef<HTMLInputElement>(null)
 
   function submit(event: FormEvent) {
     event.preventDefault()
-    onSubmit({ channel, at: new Date(at).toISOString(), content: content.trim(), result: result.trim(), nextAction: nextAction.trim() || undefined, nextAt: nextAt ? new Date(nextAt).toISOString() : undefined })
+    const designer = designers.find((item) => item.id === designerId)
+    onSubmit({ channel, at: new Date(at).toISOString(), content: content.trim(), result: result.trim(), nextAction: nextAction.trim() || undefined, nextAt: nextAt ? new Date(nextAt).toISOString() : undefined }, needsDesign && designer ? { designerId, designerName: designer.name, type: designType, requirement: requirement.trim(), dueAt: new Date(dueAt).toISOString(), priority: designPriority, referenceFiles } : undefined)
   }
 
   return <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
@@ -255,6 +274,8 @@ function FollowUpDialog({ customer, onClose, onSubmit }: { customer: Customer; o
         <div className="form-divider"><span>下一步任务</span></div>
         <label>行动内容<input value={nextAction} onChange={(event) => setNextAction(event.target.value)} placeholder="例如：邀请客户到店看样" /></label>
         <label>计划时间<input type="datetime-local" value={nextAt} onChange={(event) => setNextAt(event.target.value)} /></label>
+        <div className="design-assist-toggle"><label><input type="checkbox" checked={needsDesign} onChange={(event) => setNeedsDesign(event.target.checked)} /><span>需要设计师协助</span></label><small>保存后自动 @设计师，并在任务中心生成待办</small></div>
+        {needsDesign && <section className="design-assist-fields"><div className="design-grid"><label>指派设计师 *<select required value={designerId} onChange={(event) => setDesignerId(event.target.value)}><option value="">请选择设计师</option>{designers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>任务类型 *<select required value={designType} onChange={(event) => setDesignType(event.target.value as DesignTaskType)}>{(['平面布局', '家具搭配', '效果图', '报价方案', '方案修改', '其他'] as DesignTaskType[]).map((item) => <option key={item}>{item}</option>)}</select></label><label>计划完成时间 *<input required type="datetime-local" value={dueAt} onChange={(event) => setDueAt(event.target.value)} /></label><label>紧急程度<select value={designPriority} onChange={(event) => setDesignPriority(event.target.value as '普通' | '紧急')}><option>普通</option><option>紧急</option></select></label></div><label>设计任务要求 *<textarea required rows={2} value={requirement} onChange={(event) => setRequirement(event.target.value)} placeholder="说明客户需求、空间范围和设计重点" /></label><div className="reference-upload"><input ref={referenceInput} className="visually-hidden" type="file" multiple accept="image/*,.pdf,.dwg,.dxf,.cad,.zip" onChange={(event) => { const files = Array.from(event.target.files ?? []).map((file) => ({ id: `ref-${Date.now()}-${file.name}`, name: file.name, type: file.type || '文件', size: file.size })); setReferenceFiles((current) => [...current, ...files]) }} /><button type="button" onClick={() => referenceInput.current?.click()}><FileUp size={16} />添加参考资料</button><span>户型图、现场照片、PDF、CAD</span>{referenceFiles.map((file) => <div key={file.id}><span>{file.name}</span><button type="button" aria-label={`删除 ${file.name}`} onClick={() => setReferenceFiles((current) => current.filter((item) => item.id !== file.id))}><Trash2 size={14} /></button></div>)}</div></section>}
         <footer><button type="button" className="secondary-button" onClick={onClose}>取消</button><button className="primary-button" type="submit">保存跟进</button></footer>
       </form>
     </section>

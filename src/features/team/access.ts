@@ -52,7 +52,7 @@ export const ALL_PERMISSIONS = Object.keys(PERMISSION_LABELS) as AccessPermissio
 const ROLE_PERMISSIONS: Record<TeamRole, ReadonlySet<AccessPermission>> = {
   manager: new Set(ALL_PERMISSIONS),
   sales: new Set(['customers.own', 'tasks.own', 'conversation.analysis', 'sop']),
-  designer: new Set(['customers.design']),
+  designer: new Set(['customers.design', 'tasks.own']),
   operations: new Set(['store.analytics', 'customers.own', 'tasks.own', 'conversation.analysis', 'sop', 'revenue.summary']),
   aftersales: new Set(['customers.own', 'tasks.own', 'conversation.analysis', 'sop']),
 }

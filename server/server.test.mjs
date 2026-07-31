@@ -47,6 +47,14 @@ test('manager can create, disable and reset accounts', async () => {
   assert.equal(removed.status, 204)
 })
 
+test('employees can list active designers without account secrets', async () => {
+  const created = await json('/api/accounts', { method: 'POST', body: JSON.stringify({ username: 'design-directory', password: 'designer-pass-123', name: '方案设计师', role: 'designer' }) })
+  const listed = await json('/api/designers', { headers: { cookie: salesCookie } })
+  assert.equal(listed.status, 200)
+  assert.ok(listed.body.designers.some(item => item.id === created.body.account.id && item.name === '方案设计师'))
+  assert.equal(JSON.stringify(listed.body).includes('password'), false)
+})
+
 test('manager can register operations and aftersales employees', async () => {
   for (const role of ['operations', 'aftersales']) {
     const created = await json('/api/accounts', { method: 'POST', body: JSON.stringify({ username: `${role}-user`, password: `${role}-password-123`, name: role, role }) })
