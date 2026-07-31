@@ -108,6 +108,14 @@ export function CustomersPage({ customers, followUps, designers = [{ id: 'demo-d
   }), [ownerFilter, query, stageFilter, state.customers, taskFilter])
 
   const selected = state.customers.find((customer) => customer.id === selectedId)
+  const canWorkOnSelected = Boolean(selected && (
+    activeMember.role === 'manager'
+    || (activeMember.role === 'operations' && selected.sourceService === activeMember.name && selected.handoffStatus !== '已接收' && selected.handoffStatus !== '已开始跟进')
+    || (activeMember.role === 'sales' && (selected.salespersonId === activeMember.id || selected.salesperson === activeMember.name || selected.pendingSalespersonId === activeMember.id || selected.pendingSalesperson === activeMember.name
+      || Boolean(activeMember.canDesign && (selected.designerId === activeMember.id || selected.designer === activeMember.name))))
+    || (activeMember.role === 'designer' && (selected.designerId === activeMember.id || selected.designer === activeMember.name))
+    || (activeMember.role === 'aftersales' && (selected.salespersonId === activeMember.id || selected.salesperson === activeMember.name))
+  ))
   const timeline = useMemo(() => state.followUps
     .filter((item) => item.customerId === selectedId)
     .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()), [selectedId, state.followUps])
@@ -167,7 +175,7 @@ export function CustomersPage({ customers, followUps, designers = [{ id: 'demo-d
           <h1>客户与跟进</h1>
           <p className="customers-summary">{state.customers.length} 位客户 · {state.customers.filter((c) => c.nextFollowUpAt).length} 项待跟进</p>
         </div>
-        {selected && <button className="primary-button header-action" onClick={() => setFormOpen(true)}><MessageSquarePlus size={18} />新增跟进</button>}
+        {canWorkOnSelected && <button className="primary-button header-action" onClick={() => setFormOpen(true)}><MessageSquarePlus size={18} />新增跟进</button>}
       </header>
 
       <div className={`customers-workspace ${selected ? 'has-selection' : ''}`}>
@@ -218,8 +226,8 @@ export function CustomersPage({ customers, followUps, designers = [{ id: 'demo-d
 
               <div className="stage-editor">
                 <label htmlFor="customer-stage">当前阶段</label>
-                <select id="customer-stage" value={selected.stage} onChange={(event) => updateStage(event.target.value as CustomerStage)}>{stages.map((stage) => <option key={stage}>{stage}</option>)}</select>
-                <span>变更后自动保存</span>
+                <select id="customer-stage" disabled={!canWorkOnSelected} value={selected.stage} onChange={(event) => updateStage(event.target.value as CustomerStage)}>{stages.map((stage) => <option key={stage}>{stage}</option>)}</select>
+                <span>{canWorkOnSelected ? '变更后自动保存' : '当前阶段由对应负责人推进'}</span>
               </div>
 
               <section className={`next-task ${isOverdue(selected.nextFollowUpAt) ? 'task-overdue' : ''}`}>
@@ -241,7 +249,7 @@ export function CustomersPage({ customers, followUps, designers = [{ id: 'demo-d
               </section>
 
               <section className="timeline-section">
-                <div className="section-title"><h3>跟进记录</h3><button className="text-button" onClick={() => setFormOpen(true)}><MessageSquarePlus size={16} />新增跟进</button></div>
+                <div className="section-title"><h3>跟进记录</h3>{canWorkOnSelected && <button className="text-button" onClick={() => setFormOpen(true)}><MessageSquarePlus size={16} />新增跟进</button>}</div>
                 <div className="timeline">
                   {timeline.map((item) => <article className="timeline-item" key={item.id}>
                     <span className="timeline-marker"><CheckCircle2 size={16} /></span>

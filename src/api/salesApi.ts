@@ -1,4 +1,5 @@
 import type { Customer, DesignTask, FollowUp } from '../types'
+import type { AccessPermission } from '../features/team/access'
 
 const API_BASE = 'http://127.0.0.1:3001/api'
 const STATIC_DEMO = import.meta.env.VITE_STATIC_DEMO === 'true'
@@ -14,14 +15,15 @@ export interface RemoteAccount {
   name: string
   role: AccountRole
   canDesign?: boolean
+  permissions?: AccessPermission[]
   phone?: string
   active: boolean
   mustChangePassword?: boolean
   lastLoginAt?: string | null
   createdAt?: string
 }
-export interface CreateAccountInput { username: string; name: string; role: AccountRole; canDesign?: boolean; password: string; phone?: string }
-export interface UpdateAccountInput { username: string; name: string; role: AccountRole; canDesign?: boolean; phone?: string }
+export interface CreateAccountInput { username: string; name: string; role: AccountRole; canDesign?: boolean; permissions?: AccessPermission[]; password: string; phone?: string }
+export interface UpdateAccountInput { username: string; name: string; role: AccountRole; canDesign?: boolean; permissions?: AccessPermission[]; phone?: string }
 
 const defaultStaticAccounts: RemoteAccount[] = [
   { id: 'static-manager', username: 'manager', name: '访客店长', role: 'manager', active: true, mustChangePassword: false, phone: '', createdAt: new Date().toISOString() },

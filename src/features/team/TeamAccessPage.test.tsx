@@ -16,11 +16,12 @@ vi.mock('../../api/salesApi', () => ({ salesApi: {
 describe('TeamAccessPage', () => {
   beforeEach(() => window.localStorage.clear())
 
-  it('renders secure account management and permission matrix', async () => {
+  it('renders secure account management and employee permission settings', async () => {
     render(<TeamAccessPage storageKey="team-test" />)
     expect(await screen.findByText('账号由服务端安全管理')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: '权限矩阵' })).toBeInTheDocument()
-    expect(screen.getAllByLabelText('设计师不允许').length).toBeGreaterThan(0)
+    expect(screen.getByRole('heading', { name: '员工权限设置' })).toBeInTheDocument()
+    expect(screen.getByText('店长固定拥有全部权限')).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: '本人客户' })).toBeDisabled()
     expect(screen.queryByText('售后')).not.toBeInTheDocument()
   })
 

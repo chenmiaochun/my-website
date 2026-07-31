@@ -1,10 +1,11 @@
-import type { TeamRole } from './access'
+import type { AccessPermission, TeamRole } from './access'
 
 export interface TeamMember {
   id: string
   name: string
   role: TeamRole
   canDesign?: boolean
+  permissions?: AccessPermission[]
   phone?: string
   active: boolean
 }

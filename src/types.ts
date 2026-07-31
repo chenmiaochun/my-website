@@ -19,6 +19,7 @@ export interface Customer {
   phone: string
   source: string
   salesperson: string
+  salespersonId?: string
   designer?: string
   designerId?: string
   sourceService?: string

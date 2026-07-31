@@ -3,6 +3,8 @@ import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypt
 
 const parseJson = (value) => JSON.parse(value)
 const tokenDigest = token => createHash('sha256').update(token).digest('hex')
+const validPermissions = new Set(['store.analytics', 'coaching', 'data.manage', 'members.manage', 'customers.own', 'customers.design', 'tasks.own', 'conversation.analysis', 'sop', 'revenue.summary'])
+const normalizePermissions = permissions => permissions == null ? null : [...new Set(permissions)].filter(permission => validPermissions.has(permission))
 
 function hashPassword(password) {
   const salt = randomBytes(16)
@@ -102,6 +104,7 @@ export class SalesDatabase {
     const accountColumns = this.db.prepare('PRAGMA table_info(auth_accounts)').all().map(column => column.name)
     if (!accountColumns.includes('phone')) this.db.exec('ALTER TABLE auth_accounts ADD COLUMN phone TEXT')
     if (!accountColumns.includes('can_design')) this.db.exec('ALTER TABLE auth_accounts ADD COLUMN can_design INTEGER NOT NULL DEFAULT 0 CHECK(can_design IN (0, 1))')
+    if (!accountColumns.includes('custom_permissions')) this.db.exec('ALTER TABLE auth_accounts ADD COLUMN custom_permissions TEXT')
     this.statements = {
       getState: this.db.prepare('SELECT value, updated_at FROM app_state WHERE id = 1'),
       putState: this.db.prepare(`INSERT INTO app_state(id, value, updated_at) VALUES(1, ?, ?)
@@ -121,8 +124,8 @@ export class SalesDatabase {
       accountByUsername: this.db.prepare('SELECT * FROM auth_accounts WHERE username = ? COLLATE NOCASE'),
       accountById: this.db.prepare('SELECT * FROM auth_accounts WHERE id = ?'),
       listAccounts: this.db.prepare('SELECT * FROM auth_accounts ORDER BY created_at'),
-      insertAccount: this.db.prepare('INSERT INTO auth_accounts(id, username, password_hash, name, role, active, must_change_password, created_at, updated_at, phone, can_design) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
-      updateAccount: this.db.prepare('UPDATE auth_accounts SET username = ?, name = ?, role = ?, phone = ?, can_design = ?, updated_at = ? WHERE id = ?'),
+      insertAccount: this.db.prepare('INSERT INTO auth_accounts(id, username, password_hash, name, role, active, must_change_password, created_at, updated_at, phone, can_design, custom_permissions) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
+      updateAccount: this.db.prepare('UPDATE auth_accounts SET username = ?, name = ?, role = ?, phone = ?, can_design = ?, custom_permissions = ?, updated_at = ? WHERE id = ?'),
       updateAccountStatus: this.db.prepare('UPDATE auth_accounts SET active = ?, updated_at = ? WHERE id = ?'),
       updateAccountPassword: this.db.prepare('UPDATE auth_accounts SET password_hash = ?, must_change_password = 1, updated_at = ? WHERE id = ?'),
       deleteAccount: this.db.prepare('DELETE FROM auth_accounts WHERE id = ?'),
@@ -170,7 +173,7 @@ export class SalesDatabase {
     return this.getIntegrations()
   }
   publicAccount(row) {
-    return { id: row.id, username: row.username, name: row.name, role: row.role, canDesign: Boolean(row.can_design), phone: row.phone || '', active: Boolean(row.active), mustChangePassword: Boolean(row.must_change_password), createdAt: row.created_at, lastLoginAt: null }
+    return { id: row.id, username: row.username, name: row.name, role: row.role, canDesign: Boolean(row.can_design), permissions: row.custom_permissions ? parseJson(row.custom_permissions) : undefined, phone: row.phone || '', active: Boolean(row.active), mustChangePassword: Boolean(row.must_change_password), createdAt: row.created_at, lastLoginAt: null }
   }
   ensureInitialAdmin({ username, password, name = '店长' }) {
     if (Number(this.statements.countAccounts.get().count) > 0) return null
@@ -178,24 +181,26 @@ export class SalesDatabase {
     if (password.length < 10) throw new Error('Initial administrator password must be at least 10 characters')
     const at = this.now(), id = `account-${randomBytes(8).toString('hex')}`
     this.transaction(() => {
-      this.statements.insertAccount.run(id, username.trim(), hashPassword(password), name, 'manager', 1, 1, at, at, '', 0)
+      this.statements.insertAccount.run(id, username.trim(), hashPassword(password), name, 'manager', 1, 1, at, at, '', 0, null)
       this.record('create', 'auth_account', { accountId: id, role: 'manager', initial: true })
     })
     return this.publicAccount(this.statements.accountById.get(id))
   }
-  createAccount({ username, password, name, role, phone = '', canDesign = false, active = true, mustChangePassword = true }) {
+  createAccount({ username, password, name, role, phone = '', canDesign = false, permissions, active = true, mustChangePassword = true }) {
     if (!['manager', 'sales', 'designer', 'operations', 'aftersales'].includes(role)) throw new Error('Invalid account role')
     if (!username?.trim() || !name?.trim() || !(/^\d{6}$/.test(String(password || '')) || String(password || '').length >= 10)) throw new Error('Invalid account details')
     const at = this.now(), id = `account-${randomBytes(8).toString('hex')}`
-    this.statements.insertAccount.run(id, username.trim(), hashPassword(password), name.trim(), role, active ? 1 : 0, mustChangePassword ? 1 : 0, at, at, String(phone || '').trim(), role === 'sales' && canDesign ? 1 : 0)
+    const normalized = role === 'manager' ? null : normalizePermissions(permissions)
+    this.statements.insertAccount.run(id, username.trim(), hashPassword(password), name.trim(), role, active ? 1 : 0, mustChangePassword ? 1 : 0, at, at, String(phone || '').trim(), role === 'sales' && canDesign ? 1 : 0, normalized == null ? null : JSON.stringify(normalized))
     this.record('create', 'auth_account', { accountId: id, role })
     return this.publicAccount(this.statements.accountById.get(id))
   }
   listAccounts() { return this.statements.listAccounts.all().map(row => this.publicAccount(row)) }
-  updateAccount(id, { username, name, role, phone = '', canDesign = false }) {
-    if (!['manager', 'sales', 'designer', 'operations'].includes(role) || !username?.trim() || !name?.trim()) throw new Error('Invalid account details')
+  updateAccount(id, { username, name, role, phone = '', canDesign = false, permissions }) {
+    if (!['manager', 'sales', 'designer', 'operations', 'aftersales'].includes(role) || !username?.trim() || !name?.trim()) throw new Error('Invalid account details')
     const at = this.now()
-    const result = this.statements.updateAccount.run(username.trim(), name.trim(), role, String(phone || '').trim(), role === 'sales' && canDesign ? 1 : 0, at, id)
+    const normalized = role === 'manager' ? null : normalizePermissions(permissions)
+    const result = this.statements.updateAccount.run(username.trim(), name.trim(), role, String(phone || '').trim(), role === 'sales' && canDesign ? 1 : 0, normalized == null ? null : JSON.stringify(normalized), at, id)
     if (!result.changes) throw new Error('Account not found')
     this.record('update', 'auth_account', { accountId: id, role })
     return this.publicAccount(this.statements.accountById.get(id))
