@@ -38,7 +38,7 @@ export function reflection(state) {
     const shared = sharedFamilyWishes(state.familyMembers);
     return shared.length
       ? `家人共同在意${join(shared)}，每个人没有说在一起的需要，也会被单独保留下来。`
-      : "家人现在没有完全相同的答案，这不是冲突，而是设计需要认真照顾的差异。";
+      : "家里人现在想要的并不完全一样，这很正常。谁的需要都不该被一句“大家都这样”带过去。";
   }
   if (state.step === 3) return `空间应该顺着你们真实的一天，支持${join(state.realScenes)}。`;
   if (state.step === 4) return `对你们家来说，待客不是偶尔摆出来的场面，而是${join(state.hosting)}的日常。`;
@@ -56,34 +56,34 @@ export function lifeStatement(state) {
 export function buildRecommendations(state) {
   return [
     {
-      title: "这个家的核心",
+      title: "这个家最不能丢的三件事",
       observation: `你们最想守住的是${join(state.priorities)}。`,
-      advice: "后续每一个空间和购买决定，都先问一句：它是否让这三件事更容易发生？如果没有，就不必急着加入。"
+      advice: "以后不管做哪个房间、买哪件东西，都先问一句：它能不能让这三件事更容易做到？如果不能，就可以先不花这笔钱。"
     },
     {
       title: "家人的相处",
-      observation: `真实生活包括${join(state.realScenes)}。${state.familyMembers.map(member => `${member.name}在意${join(member.wishes)}`).join("；")}。`,
-      advice: "公共空间先回应家人的共同需要；没有形成共识的个人需要，不应被多数人的选择覆盖，而应在个人空间或专属角落里得到回应。"
+      observation: `你们家平时会有${join(state.realScenes)}。${state.familyMembers.map(member => `${member.name}在意${join(member.wishes)}`).join("；")}。`,
+      advice: "大家都想要的，先放进客厅、餐厅这些一起用的地方。只有一个人在意的，也别当成小事，可以在他的房间或常待的角落里想办法。"
     },
     {
       title: "潮汕待客",
-      observation: `你们${state.hostingFrequency}会有来客，常见状态是${join(state.hosting)}。`,
-      advice: "先按真实来客人数和交流方式组织坐、取、放、走的关系。待客用品应靠近使用位置，平时也不能妨碍一家人的日常。"
+      observation: `你们${state.hostingFrequency}会有亲友来坐，平时多半是${join(state.hosting)}。`,
+      advice: "先想平时到底来几个人、大家喜欢怎么坐。茶具和常用东西放在伸手能拿到的地方；没客人时，这些安排也不能挡着一家人正常过日子。"
     },
     {
-      title: "物品与秩序",
-      observation: `最需要被安顿的是${join(state.objects)}。`,
-      advice: `不要只追求柜子数量。先按使用频率决定位置，让${join(state.orderHabit)}，整洁才不会只成为一个人的负担。`
+      title: "东西怎么放，家人才愿意收",
+      observation: `最容易没地方放的是${join(state.objects)}。`,
+      advice: `别先急着算要做多少柜子。常用的放近一点，不常用的再收里面，让${join(state.orderHabit)}。这样收拾家里才不会总落在一个人身上。`
     },
     {
       title: "为未来留余地",
       observation: `未来三五年可能出现${join(state.futureChanges)}。`,
-      advice: "优先保留可调整的空间和接口。现在只解决已经明确的需要，把尚未发生的需求留成可能性，而不是提前买成负担。"
+      advice: "现在先把眼前确定要用的做好，同时留一点能挪、能换、能加的地方。未来的东西不用今天就买回来占位置。"
     },
     {
       title: "暂时不做什么",
       observation: `你们已经明确不需要${join(state.notNeeded)}。`,
-      advice: "不为网络图片、完整套系或低频场景增加项目。先住得舒服、用得顺手，再根据真实生活补充。"
+      advice: "不因为网上一张好看的图，就多做一个平时用不上的东西；也不用为了看起来成套，把家具一次买齐。先住得舒服、用得顺手，以后真需要了再加。"
     }
   ];
 }
@@ -98,13 +98,13 @@ export function sharedFamilyWishes(members) {
 
 export function memberSpaceAdvice(member) {
   const advice = [];
-  if (member.wishes.includes("有自己的安静角落")) advice.push("保留不被公共活动打断的安静位置");
-  if (member.wishes.includes("有自由活动的地方")) advice.push("活动区域要安全、开敞，并保持与照看者的视线联系");
-  if (member.wishes.includes("行动和起身更轻松")) advice.push("减少绕行与高差，常用位置要方便坐下和起身");
-  if (member.wishes.includes("东西容易拿也容易放回")) advice.push("个人常用品按身高和使用动作安排固定位置");
-  if (member.wishes.includes("临时工作不被打扰")) advice.push("预留可短时专注、声音干扰较少的位置");
-  if (member.wishes.includes("亲友来了更从容")) advice.push("个人休息区域与待客活动之间保留适当边界");
-  if (member.wishes.includes("家人有更多交流")) advice.push("从个人位置能自然参与公共空间的交流");
-  if (member.wishes.includes("家里更整洁")) advice.push("减少需要反复整理的开放台面，明确个人物品归属");
-  return advice.length ? advice : ["保留一处可以由本人逐渐定义和调整的位置"];
+  if (member.wishes.includes("有自己的安静角落")) advice.push("留一个不容易被电视声和走动打扰的地方");
+  if (member.wishes.includes("有自由活动的地方")) advice.push("玩的地方要安全、宽松，大人在旁边也看得到");
+  if (member.wishes.includes("行动和起身更轻松")) advice.push("少绕路、少高低差，常坐的地方起身要省力");
+  if (member.wishes.includes("东西容易拿也容易放回")) advice.push("把常用东西放在本人够得着、用完顺手能放回的地方");
+  if (member.wishes.includes("临时工作不被打扰")) advice.push("留一个偶尔能安静做事、声音没那么吵的地方");
+  if (member.wishes.includes("亲友来了更从容")) advice.push("客人来了热闹，也别占掉家人休息和做事的地方");
+  if (member.wishes.includes("家人有更多交流")) advice.push("坐在自己常待的地方，也能自然看见家人、接得上话");
+  if (member.wishes.includes("家里更整洁")) advice.push("少留容易堆东西的台面，每个人的东西都有自己的家");
+  return advice.length ? advice : ["先给他留一个位置，住进去以后还能慢慢改成自己喜欢的样子"];
 }
